@@ -26,10 +26,18 @@ sealed class ClaudeWidget : Widget
     string topModel = "";
     History spark = new History(14);
 
-    public ClaudeWidget() : base("claude", 300, 274) { }
+    // Plan limits: the 5-hour and weekly windows, as the better-claude "sub-meter" plugin records them.
+    // It writes percentUsed + resetsAt to its store whenever Claude Code runs; we just read that file.
+    readonly string storeDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "plugins", "store");
+    double pct5h = -1, pctWeek = -1;
+    DateTime reset5h, resetWeek;
+
+    public ClaudeWidget() : base("claude", 300, 322) { }
 
     protected override void Tick()
     {
+        ReadLimits();
         if (!scanning && (!scanned || ticks++ % 15 == 0))
         {
             scanning = true;
@@ -37,6 +45,53 @@ sealed class ClaudeWidget : Widget
         }
     }
     int ticks;
+
+    // sub-meter_*.json: { "limits": [ { kind, percentUsed, resetsAt }, ... ] }. Tiny file, parsed by hand.
+    void ReadLimits()
+    {
+        try
+        {
+            var f = Directory.GetFiles(storeDir, "sub-meter_*.json").FirstOrDefault();
+            if (f == null) return;
+            string s = File.ReadAllText(f);
+            ReadWindow(s, "five_hour", ref pct5h, ref reset5h);
+            ReadWindow(s, "seven_day", ref pctWeek, ref resetWeek);
+        }
+        catch { }
+    }
+
+    static void ReadWindow(string s, string kind, ref double pct, ref DateTime reset)
+    {
+        int k = s.IndexOf("\"" + kind + "\"", StringComparison.Ordinal);
+        if (k < 0) return;
+        double p = Grab(s, "\"percentUsed\":", k);
+        string ts = QuotedAfter(s, "\"resetsAt\"", k);
+        DateTime r = DateTime.MaxValue;
+        if (ts != null) try { r = DateTimeOffset.Parse(ts).UtcDateTime; } catch { }
+        // A window past its reset time has rolled over: show it empty.
+        pct = r <= DateTime.UtcNow ? 0 : p;
+        reset = r;
+    }
+
+    // First double-quoted string after a bare key, tolerant of ": " spacing.
+    static string QuotedAfter(string s, string key, int from)
+    {
+        int i = s.IndexOf(key, from, StringComparison.Ordinal);
+        if (i < 0) return null;
+        int q1 = s.IndexOf('"', i + key.Length);
+        if (q1 < 0) return null;
+        int q2 = s.IndexOf('"', q1 + 1);
+        return q2 < 0 ? null : s.Substring(q1 + 1, q2 - q1 - 1);
+    }
+
+    static string Until(DateTime resetUtc)
+    {
+        var t = resetUtc - DateTime.UtcNow;
+        if (t.TotalSeconds <= 0) return "ahora";
+        if (t.TotalDays >= 1) return (int)t.TotalDays + "d " + t.Hours + "h";
+        if (t.TotalHours >= 1) return t.Hours + "h " + t.Minutes + "m";
+        return Math.Max(1, (int)t.TotalMinutes) + "m";
+    }
 
     // USD per 1M tokens: input, output, cache write (5 min), cache read. Family picked by name.
     static double[] Rates(string model)
@@ -102,9 +157,9 @@ sealed class ClaudeWidget : Widget
         return long.TryParse(s.Substring(i, j - i), out v) ? v : 0;
     }
 
-    static string Str(string s, string key)
+    static string Str(string s, string key, int from = 0)
     {
-        int i = s.IndexOf(key, StringComparison.Ordinal);
+        int i = s.IndexOf(key, from, StringComparison.Ordinal);
         if (i < 0) return null;
         i += key.Length;
         int j = s.IndexOf('"', i);
@@ -196,19 +251,33 @@ sealed class ClaudeWidget : Widget
         T(g, "Consumo de Claude", fTitle, Theme.Text, x, 30);
         T(g, scanned ? projects + " proyectos · uso local" : "calculando…", fSmall, Theme.Dim, x, 52);
 
+        // Plan limits: the 5-hour and weekly windows as progress bars (from the sub-meter plugin).
+        PlanBar(g, "Límite 5h", pct5h, reset5h, x, 78, w, r);
+        PlanBar(g, "Límite semanal", pctWeek, resetWeek, x, 110, w, r);
+
         // Today hero: tokens left, API-equivalent cost right.
-        Eyebrow(g, "HOY", x, 80);
-        T(g, Tk(todayTok) + " tok", fBig, Theme.Blue, x, 96);
-        TR(g, Usd(todayCost), fBig, Theme.Violet, r, 96);
+        Eyebrow(g, "HOY", x, 148);
+        T(g, Tk(todayTok) + " tok", fBig, Theme.Blue, x, 164);
+        TR(g, Usd(todayCost), fBig, Theme.Violet, r, 164);
         T(g, "Entrada " + Tk(todayIn) + "  ·  Salida " + Tk(todayOut) + "  ·  Caché " + Tk(todayCache),
-            fSmall, Theme.Dim, x, 126);
+            fSmall, Theme.Dim, x, 194);
 
         // 14-day sparkline.
-        Spark(g, new RectangleF(x, 148, w, 34), spark, spark.Max(), Theme.Green, true);
-        T(g, "últimos 14 días", fSmall, Theme.Dim, x, 186);
+        Spark(g, new RectangleF(x, 214, w, 32), spark, spark.Max(), Theme.Green, true);
+        T(g, "últimos 14 días", fSmall, Theme.Dim, x, 250);
 
-        Line(g, x, 210, w);
-        Stat(g, "ESTA SEMANA", Tk(weekTok) + " · " + Usd(weekCost), Theme.Text, x, 222);
-        Stat(g, "ESTE MES", Tk(monthTok) + " · " + Usd(monthCost), Theme.Text, x + 140, 222);
+        Line(g, x, 274, w);
+        Stat(g, "ESTA SEMANA", Tk(weekTok) + " · " + Usd(weekCost), Theme.Text, x, 286);
+        Stat(g, "ESTE MES", Tk(monthTok) + " · " + Usd(monthCost), Theme.Text, x + 140, 286);
+    }
+
+    void PlanBar(Graphics g, string label, double pct, DateTime reset, float x, float y, float w, float r)
+    {
+        T(g, label, fSmall, Theme.Dim, x, y);
+        if (pct < 0) { TR(g, "sin datos", fSmall, Theme.Dim, r, y); Bar(g, x, y + 17, w, 6, double.NaN, Theme.Track); return; }
+        Color c = Theme.Load(pct / 100);
+        TR(g, "reset " + Until(reset), fSmall, Theme.Dim, r, y);
+        TR(g, pct.ToString("0") + " %", fSmall, c, r - 70, y);
+        Bar(g, x, y + 17, w, 6, pct / 100, c);
     }
 }
