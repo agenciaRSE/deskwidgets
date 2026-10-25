@@ -72,6 +72,9 @@ abstract class Widget : Form
     protected readonly Font fTitle, fBig, fText, fSmall;
     protected RectangleF Btn;
     protected bool BtnHot;
+    // Extra clickable zones with their own actions (close buttons, etc.), rebuilt each Draw.
+    readonly List<KeyValuePair<RectangleF, Action>> zones = new List<KeyValuePair<RectangleF, Action>>();
+    RectangleF hotZone;
     readonly string id;
     readonly bool hasPos;
     readonly Timer timer = new Timer();
@@ -157,7 +160,9 @@ abstract class Widget : Form
     {
         base.OnMouseDown(e);
         if (e.Button != MouseButtons.Left) return;
-        if (!Btn.IsEmpty && Btn.Contains(Logical(e.Location))) { OnButton(); Invalidate(); return; }
+        var lp = Logical(e.Location);
+        foreach (var z in zones) if (z.Key.Contains(lp)) { z.Value(); Invalidate(); return; }
+        if (!Btn.IsEmpty && Btn.Contains(lp)) { OnButton(); Invalidate(); return; }
         Native.ReleaseCapture();
         Native.SendMessage(Handle, 0xA1 /* WM_NCLBUTTONDOWN */, new IntPtr(2) /* HTCAPTION */, IntPtr.Zero);
     }
@@ -165,14 +170,23 @@ abstract class Widget : Form
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        bool hot = !Btn.IsEmpty && Btn.Contains(Logical(e.Location));
-        if (hot != BtnHot) { BtnHot = hot; Cursor = hot ? Cursors.Hand : Cursors.Default; Invalidate(); }
+        var lp = Logical(e.Location);
+        RectangleF hz = RectangleF.Empty;
+        foreach (var z in zones) if (z.Key.Contains(lp)) { hz = z.Key; break; }
+        bool hot = (!Btn.IsEmpty && Btn.Contains(lp)) || !hz.IsEmpty;
+        if (hot != BtnHot || hz != hotZone)
+        {
+            BtnHot = !hz.IsEmpty ? false : (!Btn.IsEmpty && Btn.Contains(lp));
+            hotZone = hz;
+            Cursor = hot ? Cursors.Hand : Cursors.Default;
+            Invalidate();
+        }
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        if (BtnHot) { BtnHot = false; Cursor = Cursors.Default; Invalidate(); }
+        if (BtnHot || !hotZone.IsEmpty) { BtnHot = false; hotZone = RectangleF.Empty; Cursor = Cursors.Default; Invalidate(); }
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -181,7 +195,19 @@ abstract class Widget : Form
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         g.ScaleTransform(S, S);
+        Btn = RectangleF.Empty;
+        zones.Clear();
         Draw(g);
+    }
+
+    // A small pill button with its own action (e.g. "Cerrar"). Registers a click zone.
+    protected void ActionPill(Graphics g, RectangleF r, string label, Color c, Action onClick)
+    {
+        zones.Add(new KeyValuePair<RectangleF, Action>(r, onClick));
+        bool hot = hotZone == r;
+        Fill(g, r, r.Height / 2, hot ? Color.FromArgb(70, c) : Color.FromArgb(40, c));
+        float tw = TW(g, label, fSmall);
+        T(g, label, fSmall, c, r.X + (r.Width - tw) / 2, r.Y + (r.Height - 15) / 2);
     }
 
     // ---- drawing helpers (logical units) ----

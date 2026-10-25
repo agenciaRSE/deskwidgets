@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -24,7 +25,13 @@ sealed class PcWidget : Widget
         return DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).Take(4).ToArray();
     }
 
-    public PcWidget() : base("pc", 300, 332 + FixedDrives().Length * 22)
+    // name, RAM MB, CPU %: the heaviest closable foreground apps, so they can be closed from the widget.
+    readonly object offLock = new object();
+    sealed class Off { public string Name; public double Ram, Cpu; }
+    List<Off> offenders = new List<Off>();
+    bool sampling;
+
+    public PcWidget() : base("pc", 300, 406 + FixedDrives().Length * 22)
     {
         cCpu = pdh.Add(@"\Processor Information(_Total)\% Processor Utility");
         if (cCpu == IntPtr.Zero) cCpu = pdh.Add(@"\Processor(_Total)\% Processor Time");
@@ -70,6 +77,29 @@ sealed class PcWidget : Widget
         if (ticks++ % 10 == 0)
             for (int i = 0; i < drives.Length; i++)
                 try { driveFree[i] = drives[i].TotalFreeSpace; driveTotal[i] = drives[i].TotalSize; } catch { }
+
+        if (!sampling && ticks % 8 == 1) SampleOffenders();
+    }
+
+    // The heaviest closable windowed apps, sampled off the UI thread (Procs.Top sleeps 1.5 s).
+    void SampleOffenders()
+    {
+        sampling = true;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                var top = Procs.Top()
+                    .Where(p => (bool)p["closable"] && (bool)p["has_window"] && Convert.ToDouble(p["ram_mb"]) >= 600)
+                    .OrderByDescending(p => Convert.ToDouble(p["ram_mb"]))
+                    .Take(2)
+                    .Select(p => new Off { Name = (string)p["name"], Ram = Convert.ToDouble(p["ram_mb"]), Cpu = Convert.ToDouble(p["cpu_pct"]) })
+                    .ToList();
+                lock (offLock) offenders = top;
+            }
+            catch { }
+            finally { sampling = false; }
+        });
     }
 
     static string Gb(double bytes) { return (bytes / (1L << 30)).ToString(bytes < 100L * (1L << 30) ? "0.0" : "0"); }
@@ -135,7 +165,34 @@ sealed class PcWidget : Widget
             foot += "  ·  batería " + (ps.BatteryLifePercent * 100).ToString("0") + " %" + (ps.PowerLineStatus == PowerLineStatus.Online ? " (cargando)" : "");
         T(g, foot, fSmall, Theme.Dim, x, y);
 
-        Button(g, new RectangleF(x, y + 24, w, 30), "✦  Analizar con Claude", true);
+        // Heavy apps you can close straight from the widget (RAM/CPU hogs with a window).
+        y += 26;
+        Eyebrow(g, "APPS QUE MÁS CONSUMEN", x, y);
+        y += 18;
+        List<Off> offs;
+        lock (offLock) offs = offenders;
+        if (offs.Count == 0)
+            T(g, "nada destacable ahora", fSmall, Theme.Dim, x, y + 2);
+        for (int i = 0; i < 2; i++, y += 24)
+        {
+            if (i >= offs.Count) continue;
+            var o = offs[i];
+            T(g, o.Name.Length > 18 ? o.Name.Substring(0, 18) + "…" : o.Name, fText, Theme.Text, x, y);
+            string use = Gb(o.Ram * 1048576.0) + " GB" + (o.Cpu >= 5 ? "  ·  " + o.Cpu.ToString("0") + " %" : "");
+            TR(g, use, fSmall, Theme.Dim, r - 66, y + 1);
+            string name = o.Name;
+            ActionPill(g, new RectangleF(r - 58, y - 1, 58, 20), "Cerrar", Theme.Red, () => AskClose(name));
+        }
+
+        Button(g, new RectangleF(x, y + 4, w, 30), "✦  Analizar con Claude", true);
+    }
+
+    void AskClose(string name)
+    {
+        var ans = MessageBox.Show(this, "¿Cerrar todas las ventanas de «" + name + "»?\n\nSe pedirá guardar si hay cambios sin guardar.",
+            "DeskWidgets", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+        if (ans != DialogResult.Yes) return;
+        ThreadPool.QueueUserWorkItem(_ => { try { Procs.Close(name); } catch { } SampleOffenders(); });
     }
 
     public event EventHandler Analyze;
