@@ -42,3 +42,12 @@ Todo se lee con APIs nativas, sin lanzar `netsh`, `typeperf` ni WMI:
 - En modo escritorio, Win+D oculta los widgets como cualquier otra ventana.
 - El escaneo de dispositivos solo cubre el /24 de tu IP. Los dispositivos que no responden a ARP no aparecen.
 - El tráfico se mide en el adaptador físico. Una VPN (WARP, WireGuard) no oculta el tráfico, pero los datos del router son los de la red física.
+
+## Instalación
+
+Smart App Control bloquea los ejecutables sin firma, así que el instalador firma el exe antes de instalarlo, con Azure Artifact Signing (certificado *Public Trust*).
+
+1. Copia `signing.example.json` a `signing.json` y rellena el endpoint de la región, la cuenta y el perfil de certificado.
+2. Ejecuta `.\install.ps1`. Compila, firma (la primera vez se abre el navegador para iniciar sesión en Azure), instala en `%LOCALAPPDATA%\Programs\DeskWidgets`, crea el acceso directo del menú Inicio, lo activa al iniciar Windows y lo abre.
+
+Desinstalar: `.\install.ps1 -Uninstall`.

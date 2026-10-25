@@ -1,0 +1,5 @@
+{
+  "endpoint": "https://weu.codesigning.azure.net/",
+  "account": "nombre-de-tu-cuenta-de-artifact-signing",
+  "profile": "nombre-del-perfil-de-certificado-public-trust"
+}
