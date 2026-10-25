@@ -135,7 +135,9 @@ static class Procs
 
     public static bool CanClose(string name)
     {
-        return !string.IsNullOrEmpty(name) && !Protected.Contains(name);
+        // Our own host too (powershell when launched via DeskWidgets.ps1): closing it would kill the widgets.
+        return !string.IsNullOrEmpty(name) && !Protected.Contains(name)
+            && !name.Equals(Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase);
     }
 
     // CPU (sampled over 1.5 s) and RAM per process name, top 25, for the model to reason about.

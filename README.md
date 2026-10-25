@@ -1,6 +1,6 @@
 # DeskWidgets
 
-Dos widgets de escritorio nativos para Windows 10/11 en un solo exe pequeño (un proceso, ~50 MB de RAM, <0,1 % de CPU).
+Dos widgets de escritorio nativos para Windows 10/11 en un solo ensamblado pequeño (un proceso, ~90 MB de RAM con PowerShell como anfitrión, <0,1 % de CPU).
 
 - **Conexión**: SSID, estándar Wi-Fi, banda y canal, señal en % y dBm, velocidad de enlace, descarga/subida en vivo con gráfica de 60 s, latencia a 1.1.1.1, jitter, pérdida de paquetes, latencia al router, dispositivos en la red (pasa el ratón para ver IP, MAC y nombre) y test de velocidad bajo demanda (Cloudflare, unos 16 s).
 - **Sistema**: CPU (mismo % que el Administrador de tareas, GHz actuales), RAM, GPU, actividad de disco y MB/s de lectura/escritura, espacio de cada unidad fija, tiempo encendido, procesos y batería.
@@ -17,8 +17,8 @@ Usa tu suscripción de Claude a través de Claude Code en modo headless (`claude
 ## Uso
 
 ```powershell
-.\build.ps1          # compila DeskWidgets.exe con el csc.exe que trae .NET Framework 4.8
-.\DeskWidgets.exe
+.\build.ps1          # compila DeskWidgets.dll con el csc.exe que trae .NET Framework 4.8
+powershell -Sta -ExecutionPolicy Bypass -File .\DeskWidgets.ps1
 ```
 
 - Arrastra un widget para moverlo. La posición se guarda en `%APPDATA%\DeskWidgets\settings.ini`.
@@ -45,9 +45,9 @@ Todo se lee con APIs nativas, sin lanzar `netsh`, `typeperf` ni WMI:
 
 ## Instalación
 
-Smart App Control bloquea los ejecutables sin firma, así que el instalador firma el exe antes de instalarlo, con Azure Artifact Signing (certificado *Public Trust*).
+```powershell
+.\install.ps1              # compila, instala en %LOCALAPPDATA%\Programs\DeskWidgets, acceso directo, inicio con Windows
+.\install.ps1 -Uninstall
+```
 
-1. Copia `signing.example.json` a `signing.json` y rellena el endpoint de la región, la cuenta y el perfil de certificado.
-2. Ejecuta `.\install.ps1`. Compila, firma (la primera vez se abre el navegador para iniciar sesión en Azure), instala en `%LOCALAPPDATA%\Programs\DeskWidgets`, crea el acceso directo del menú Inicio, lo activa al iniciar Windows y lo abre.
-
-Desinstalar: `.\install.ps1 -Uninstall`.
+Smart App Control bloquea los ejecutables sin firma, aunque los hayas compilado tú. Por eso la app se compila como `DeskWidgets.dll` y la abre `DeskWidgets.ps1`: carga el ensamblado en memoria dentro de `powershell.exe`, que sí está firmado por Microsoft. No es una vía aprobada por SAC; si una actualización de Windows la cierra, la alternativa es firmar el binario con un certificado de confianza pública (p. ej. Azure Artifact Signing).

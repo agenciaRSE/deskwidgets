@@ -111,7 +111,8 @@ static class Program
     {
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
         {
-            if (on) k.SetValue(AppName, "\"" + Application.ExecutablePath + "\"");
+            // The full command line, not ExecutablePath: hosted by DeskWidgets.ps1 that would be bare powershell.exe.
+            if (on) k.SetValue(AppName, Environment.CommandLine);
             else k.DeleteValue(AppName, false);
         }
     }
