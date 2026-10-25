@@ -11,6 +11,7 @@ static class Program
     const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     static NetWidget net;
     static PcWidget pc;
+    static ClaudeWidget cl;
     static NotifyIcon tray;
 
     [STAThread]
@@ -27,19 +28,22 @@ static class Program
 
             net = new NetWidget();
             pc = new PcWidget();
+            cl = new ClaudeWidget();
             var wa = Screen.PrimaryScreen.WorkingArea;
             net.PlaceDefault(wa.Right - net.Width - 16, wa.Top + 16);
             pc.PlaceDefault(wa.Right - pc.Width - 16, wa.Top + 16 + net.Height + 12);
-            net.TopMost = pc.TopMost = Settings.Bool("topmost", false);
+            cl.PlaceDefault(wa.Right - cl.Width - 16, wa.Top + 16 + net.Height + 12 + pc.Height + 12);
+            net.TopMost = pc.TopMost = cl.TopMost = Settings.Bool("topmost", false);
 
             pc.Analyze += (s, e) => ShowAdvisor();
             var menu = BuildMenu();
-            net.ContextMenuStrip = pc.ContextMenuStrip = menu;
+            net.ContextMenuStrip = pc.ContextMenuStrip = cl.ContextMenuStrip = menu;
             tray = new NotifyIcon { Icon = MakeIcon(), Text = AppName, ContextMenuStrip = menu, Visible = true };
-            tray.DoubleClick += (s, e) => { net.Show(); pc.Show(); };
+            tray.DoubleClick += (s, e) => { net.Show(); pc.Show(); cl.Show(); };
 
             if (Settings.Bool("net.visible", true)) net.Show();
             if (Settings.Bool("pc.visible", true)) pc.Show();
+            if (Settings.Bool("claude.visible", true)) cl.Show();
             Application.Run();
         }
     }
@@ -49,6 +53,7 @@ static class Program
         var m = new ContextMenuStrip();
         var iNet = new ToolStripMenuItem("Widget de red");
         var iPc = new ToolStripMenuItem("Widget de rendimiento");
+        var iCl = new ToolStripMenuItem("Widget de Claude");
         var iTop = new ToolStripMenuItem("Siempre encima de las ventanas");
         var iRun = new ToolStripMenuItem("Iniciar con Windows");
         var iExit = new ToolStripMenuItem("Salir");
@@ -56,21 +61,23 @@ static class Program
         iAi.Click += (s, e) => ShowAdvisor();
         iNet.Click += (s, e) => Toggle(net, "net");
         iPc.Click += (s, e) => Toggle(pc, "pc");
+        iCl.Click += (s, e) => Toggle(cl, "claude");
         iTop.Click += (s, e) =>
         {
             bool v = !net.TopMost;
-            net.TopMost = pc.TopMost = v;
-            if (!v) { net.SendToBack(); pc.SendToBack(); }
+            net.TopMost = pc.TopMost = cl.TopMost = v;
+            if (!v) { net.SendToBack(); pc.SendToBack(); cl.SendToBack(); }
             Settings.SetBool("topmost", v);
             Settings.Save();
         };
         iRun.Click += (s, e) => SetAutostart(!IsAutostart());
         iExit.Click += (s, e) => { tray.Visible = false; Settings.Save(); Application.Exit(); };
-        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
+        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, iCl, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
         m.Opening += (s, e) =>
         {
             iNet.Checked = net.Visible;
             iPc.Checked = pc.Visible;
+            iCl.Checked = cl.Visible;
             iTop.Checked = net.TopMost;
             iRun.Checked = IsAutostart();
         };
