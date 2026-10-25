@@ -5,5 +5,5 @@ $src = Join-Path $PSScriptRoot 'src\*.cs'
 
 Get-Process DeskWidgets -ErrorAction SilentlyContinue | Stop-Process -Force
 & $csc /nologo /codepage:65001 /target:winexe /optimize+ /platform:anycpu /out:$out `
-    /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll $src
+    /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll /r:System.Web.Extensions.dll $src
 if ($LASTEXITCODE -eq 0) { Write-Host "OK -> $out" } else { exit $LASTEXITCODE }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -23,7 +24,7 @@ sealed class PcWidget : Widget
         return DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady).Take(4).ToArray();
     }
 
-    public PcWidget() : base("pc", 300, 292 + FixedDrives().Length * 22)
+    public PcWidget() : base("pc", 300, 332 + FixedDrives().Length * 22)
     {
         cCpu = pdh.Add(@"\Processor Information(_Total)\% Processor Utility");
         if (cCpu == IntPtr.Zero) cCpu = pdh.Add(@"\Processor(_Total)\% Processor Time");
@@ -133,5 +134,36 @@ sealed class PcWidget : Widget
         if ((ps.BatteryChargeStatus & BatteryChargeStatus.NoSystemBattery) == 0 && ps.BatteryChargeStatus != BatteryChargeStatus.Unknown)
             foot += "  ·  batería " + (ps.BatteryLifePercent * 100).ToString("0") + " %" + (ps.PowerLineStatus == PowerLineStatus.Online ? " (cargando)" : "");
         T(g, foot, fSmall, Theme.Dim, x, y);
+
+        Button(g, new RectangleF(x, y + 24, w, 30), "✦  Analizar con Claude", true);
+    }
+
+    public event EventHandler Analyze;
+    protected override void OnButton() { if (Analyze != null) Analyze(this, EventArgs.Empty); }
+
+    static object Num(double v, int digits) { return double.IsNaN(v) ? null : (object)Math.Round(v, digits); }
+
+    public Dictionary<string, object> Snapshot()
+    {
+        var ps = SystemInformation.PowerStatus;
+        bool battery = (ps.BatteryChargeStatus & BatteryChargeStatus.NoSystemBattery) == 0 && ps.BatteryChargeStatus != BatteryChargeStatus.Unknown;
+        return new Dictionary<string, object>
+        {
+            { "cpu_model", cpuName },
+            { "logical_cores", Environment.ProcessorCount },
+            { "cpu_pct", Num(cpu, 0) },
+            { "cpu_ghz", Num(ghz, 2) },
+            { "ram_used_gb", Math.Round(ramUsed / 1073741824.0, 1) },
+            { "ram_total_gb", Math.Round(ramTotal / 1073741824.0, 1) },
+            { "gpu_pct", Num(gpu, 0) },
+            { "disk_active_pct", Num(disk, 0) },
+            { "disk_read_mbs", Num(rd / 1e6, 1) },
+            { "disk_write_mbs", Num(wr / 1e6, 1) },
+            { "drives", drives.Select((d, i) => new Dictionary<string, object> {
+                { "drive", d.Name }, { "free_gb", Math.Round(driveFree[i] / 1073741824.0) }, { "total_gb", Math.Round(driveTotal[i] / 1073741824.0) } }).ToList() },
+            { "uptime_hours", Math.Round(Native.GetTickCount64() / 3600000.0, 1) },
+            { "process_count", procs },
+            { "battery_pct", battery ? (object)Math.Round(ps.BatteryLifePercent * 100) : null },
+        };
     }
 }

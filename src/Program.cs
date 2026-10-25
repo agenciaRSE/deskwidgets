@@ -32,6 +32,7 @@ static class Program
             pc.PlaceDefault(wa.Right - pc.Width - 16, wa.Top + 16 + net.Height + 12);
             net.TopMost = pc.TopMost = Settings.Bool("topmost", false);
 
+            pc.Analyze += (s, e) => ShowAdvisor();
             var menu = BuildMenu();
             net.ContextMenuStrip = pc.ContextMenuStrip = menu;
             tray = new NotifyIcon { Icon = MakeIcon(), Text = AppName, ContextMenuStrip = menu, Visible = true };
@@ -51,6 +52,8 @@ static class Program
         var iTop = new ToolStripMenuItem("Siempre encima de las ventanas");
         var iRun = new ToolStripMenuItem("Iniciar con Windows");
         var iExit = new ToolStripMenuItem("Salir");
+        var iAi = new ToolStripMenuItem("Analizar con Claude…") { Font = new Font(m.Font, FontStyle.Bold) };
+        iAi.Click += (s, e) => ShowAdvisor();
         iNet.Click += (s, e) => Toggle(net, "net");
         iPc.Click += (s, e) => Toggle(pc, "pc");
         iTop.Click += (s, e) =>
@@ -63,7 +66,7 @@ static class Program
         };
         iRun.Click += (s, e) => SetAutostart(!IsAutostart());
         iExit.Click += (s, e) => { tray.Visible = false; Settings.Save(); Application.Exit(); };
-        m.Items.AddRange(new ToolStripItem[] { iNet, iPc, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
+        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
         m.Opening += (s, e) =>
         {
             iNet.Checked = net.Visible;
@@ -72,6 +75,24 @@ static class Program
             iRun.Checked = IsAutostart();
         };
         return m;
+    }
+
+    static AdvisorForm advisor;
+
+    // One analysis window, reused; opening it starts a fresh analysis unless one is already running.
+    static void ShowAdvisor()
+    {
+        if (advisor == null || advisor.IsDisposed)
+            advisor = new AdvisorForm(() =>
+            {
+                var d = pc.Snapshot();
+                d["network"] = net.Snapshot();
+                return d;
+            }, () => net.Gateway);
+        advisor.Show();
+        if (advisor.WindowState == FormWindowState.Minimized) advisor.WindowState = FormWindowState.Normal;
+        advisor.Activate();
+        advisor.Run();
     }
 
     static void Toggle(Form f, string id)

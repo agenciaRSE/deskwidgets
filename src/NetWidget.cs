@@ -359,6 +359,37 @@ sealed class NetWidget : Widget
         }
     }
 
+    public string Gateway { get { return gateway; } }
+
+    public Dictionary<string, object> Snapshot()
+    {
+        double avg, jitter, loss;
+        PingStats(out avg, out jitter, out loss);
+        Func<double, object> num = v => double.IsNaN(v) || v < 0 ? null : (object)Math.Round(v, 1);
+        var wf = wifi;
+        var devs = devices;
+        return new Dictionary<string, object>
+        {
+            { "adapter", nic == null ? null : nic.Description },
+            { "connection", nic == null ? "none" : wf != null ? "wifi" : "ethernet" },
+            { "wifi", wf == null ? null : new Dictionary<string, object> {
+                { "ssid", wf.Ssid }, { "standard", wf.Standard }, { "band", wf.Band }, { "channel", wf.Channel },
+                { "signal_pct", wf.Signal }, { "rssi_dbm", wf.Rssi }, { "link_rx_mbps", Math.Round(wf.RxMbps) }, { "link_tx_mbps", Math.Round(wf.TxMbps) } } },
+            { "download_mbps_now", Math.Round(downNow / 1e6, 2) },
+            { "upload_mbps_now", Math.Round(upNow / 1e6, 2) },
+            { "download_mbps_peak_60s", Math.Round(down.Max() / 1e6, 2) },
+            { "internet_ping_ms", num(avg) },
+            { "jitter_ms", num(jitter) },
+            { "packet_loss_pct", num(loss) },
+            { "router_ping_ms", num(routerMs) },
+            { "local_ip", ipLocal },
+            { "router_ip", gateway },
+            { "last_speed_test", testResult == "" ? null : testResult + " (" + Ago(testAt) + ")" },
+            { "lan_devices", devs == null ? null : devs.Select(d => new Dictionary<string, object> {
+                { "ip", d.Ip.ToString() }, { "mac", d.Mac }, { "name", d.Name } }).ToList() },
+        };
+    }
+
     static string Ago(DateTime t)
     {
         var m = (int)(DateTime.Now - t).TotalMinutes;
