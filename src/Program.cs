@@ -33,7 +33,6 @@ static class Program
             net.PlaceDefault(wa.Right - net.Width - 16, wa.Top + 16);
             pc.PlaceDefault(wa.Right - pc.Width - 16, wa.Top + 16 + net.Height + 12);
             cl.PlaceDefault(wa.Right - cl.Width - 16, wa.Top + 16 + net.Height + 12 + pc.Height + 12);
-            net.TopMost = pc.TopMost = cl.TopMost = Settings.Bool("topmost", false);
 
             pc.Analyze += (s, e) => ShowAdvisor();
             var menu = BuildMenu();
@@ -55,7 +54,7 @@ static class Program
         var iNet = new ToolStripMenuItem("Widget de red");
         var iPc = new ToolStripMenuItem("Widget de rendimiento");
         var iCl = new ToolStripMenuItem("Widget de Claude");
-        var iTop = new ToolStripMenuItem("Siempre encima de las ventanas");
+        var iTop = new ToolStripMenuItem("Fijar todos encima de las ventanas");
         var iRun = new ToolStripMenuItem("Iniciar con Windows");
         var iExit = new ToolStripMenuItem("Salir");
         var iAi = new ToolStripMenuItem("Analizar con Claude…") { Font = new Font(m.Font, FontStyle.Bold) };
@@ -65,11 +64,8 @@ static class Program
         iCl.Click += (s, e) => Toggle(cl, "claude");
         iTop.Click += (s, e) =>
         {
-            bool v = !net.TopMost;
-            net.TopMost = pc.TopMost = cl.TopMost = v;
-            if (!v) { net.SendToBack(); pc.SendToBack(); cl.SendToBack(); }
-            Settings.SetBool("topmost", v);
-            Settings.Save();
+            bool v = !(net.Pinned && pc.Pinned && cl.Pinned);
+            net.Pinned = pc.Pinned = cl.Pinned = v;
         };
         iRun.Click += (s, e) => SetAutostart(!IsAutostart());
         iExit.Click += (s, e) => { tray.Visible = false; Settings.Save(); Application.Exit(); };
@@ -79,7 +75,7 @@ static class Program
             iNet.Checked = net.Visible;
             iPc.Checked = pc.Visible;
             iCl.Checked = cl.Visible;
-            iTop.Checked = net.TopMost;
+            iTop.Checked = net.Pinned && pc.Pinned && cl.Pinned;
             iRun.Checked = IsAutostart();
         };
         return m;

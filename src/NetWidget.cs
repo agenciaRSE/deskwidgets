@@ -288,15 +288,15 @@ sealed class NetWidget : Widget
 
         // Header
         Eyebrow(g, "CONEXIÓN", x, 14);
-        if (nic == null) Badge(g, "Sin red", Theme.Red, r, 11);
+        if (nic == null) Badge(g, "Sin red", Theme.Red, HeaderRight, 11);
         // The speed test saturates the line on purpose; rating it then would always say "Mala".
-        else if (testing) Badge(g, "Midiendo…", Theme.Blue, r, 11);
+        else if (testing) Badge(g, "Midiendo…", Theme.Blue, HeaderRight, 11);
         else
         {
             Color qc;
             string q = Rate(wf == null ? -1 : wf.Signal, avg, jitter, loss, out qc);
             if (!double.IsNaN(loss) && loss >= 100) { q = "Sin internet"; qc = Theme.Red; }
-            Badge(g, q, qc, r, 11);
+            Badge(g, q, qc, HeaderRight, 11);
         }
         string name = nic == null ? "Desconectado" : wf != null ? wf.Ssid : "Ethernet";
         T(g, name, fTitle, Theme.Text, x, 30);

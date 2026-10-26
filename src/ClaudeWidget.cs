@@ -336,7 +336,7 @@ sealed class ClaudeWidget : Widget
         const float x = 16, w = 268, r = x + w;
 
         Eyebrow(g, "CLAUDE", x, 14);
-        if (topModel.Length > 0) Badge(g, topModel, Theme.Violet, r, 12);
+        if (topModel.Length > 0) Badge(g, topModel, Theme.Violet, HeaderRight, 12);
         T(g, "Consumo de Claude", fTitle, Theme.Text, x, 30);
         T(g, scanned ? projects + " proyectos · uso local" : "calculando…", fSmall, Theme.Dim, x, 52);
         DrawClawd(g);

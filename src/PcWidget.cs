@@ -117,7 +117,7 @@ sealed class PcWidget : Widget
         const float x = 16, w = 268, r = x + w;
 
         Eyebrow(g, "SISTEMA", x, 14);
-        TR(g, "encendido " + Uptime(), fSmall, Theme.Dim, r, 14);
+        TR(g, "encendido " + Uptime(), fSmall, Theme.Dim, HeaderRight, 14);
         T(g, Environment.MachineName, fTitle, Theme.Text, x, 30);
         T(g, cpuName.Length > 46 ? cpuName.Substring(0, 46) + "…" : cpuName, fSmall, Theme.Dim, x, 52);
 

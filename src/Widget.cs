@@ -75,6 +75,13 @@ abstract class Widget : Form
     // Extra clickable zones with their own actions (close buttons, etc.), rebuilt each Draw.
     readonly List<KeyValuePair<RectangleF, Action>> zones = new List<KeyValuePair<RectangleF, Action>>();
     RectangleF hotZone;
+    // Pin toggle in the top-right corner; right-aligned header items end at HeaderRight.
+    protected readonly RectangleF Pin;
+    protected float HeaderRight { get { return Pin.X - 6; } }
+    readonly Font fIcon = new Font("Segoe MDL2 Assets", 12f, GraphicsUnit.Pixel);
+    readonly ToolTip pinTip = new ToolTip();
+    // Own flag: Form.TopMost only flips after SetWindowPos returns, too late for WM_WINDOWPOSCHANGING.
+    bool pinned;
     readonly string id;
     readonly bool hasPos;
     readonly Timer timer = new Timer();
@@ -84,13 +91,17 @@ abstract class Widget : Form
     {
         this.id = id;
         FormBorderStyle = FormBorderStyle.None;
-        ShowInTaskbar = false;
+        // Kept true on purpose: false makes WinForms parent the form to a hidden owner window, and an owned
+        // window cannot stay topmost reliably. WS_EX_TOOLWINDOW (CreateParams) already hides it from the taskbar.
+        ShowInTaskbar = true;
         StartPosition = FormStartPosition.Manual;
         DoubleBuffered = true;
         BackColor = Theme.Bg;
         Text = "DeskWidgets " + id;
         using (var g = CreateGraphics()) S = g.DpiX / 96f;
         ClientSize = new Size((int)Math.Round(w * S), (int)Math.Round(h * S));
+        Pin = new RectangleF(w - 16 - 20, 10, 20, 20);
+        TopMost = pinned = Settings.Bool(id + ".topmost", Settings.Bool("topmost", false));
 
         fTitle = new Font("Segoe UI Semibold", 16f, GraphicsUnit.Pixel);
         fBig = new Font("Segoe UI Semibold", 21f, GraphicsUnit.Pixel);
@@ -112,6 +123,28 @@ abstract class Widget : Form
 
     public void PlaceDefault(int x, int y) { if (!hasPos) Location = new Point(x, y); }
 
+    // Pinned = above every window, to keep an eye on it while you work; otherwise it sits on the desktop.
+    public bool Pinned
+    {
+        get { return pinned; }
+        set
+        {
+            if (value == pinned) return;
+            pinned = value;
+            // Windows refuses to raise a background process's window into the topmost band, and this widget never
+            // activates, so it never counts as foreground. The click that got us here allows taking the foreground
+            // for a moment: take it, raise the widget, then hand focus back to the app you were using.
+            var prev = value ? Native.GetForegroundWindow() : IntPtr.Zero;
+            if (value) Native.SetForegroundWindow(Handle);
+            TopMost = value;
+            Native.SetWindowPos(Handle, new IntPtr(value ? -1 : -2), 0, 0, 0, 0, 0x13 /* NOSIZE|NOMOVE|NOACTIVATE */);
+            if (prev != IntPtr.Zero && prev != Handle) Native.SetForegroundWindow(prev);
+            Settings.SetBool(id + ".topmost", value);
+            Settings.Save();
+            Invalidate();
+        }
+    }
+
     protected abstract void Tick();
     protected abstract void Draw(Graphics g);
     protected virtual void OnButton() { }
@@ -119,7 +152,7 @@ abstract class Widget : Form
     // Tool window (no Alt+Tab) that never steals focus from the app you are using.
     protected override CreateParams CreateParams
     {
-        get { var cp = base.CreateParams; cp.ExStyle |= 0x80 | 0x08000000; return cp; }
+        get { var cp = base.CreateParams; cp.ExStyle = (cp.ExStyle | 0x80 | 0x08000000) & ~0x40000 /* no WS_EX_APPWINDOW */; return cp; }
     }
     protected override bool ShowWithoutActivation { get { return true; } }
 
@@ -136,7 +169,7 @@ abstract class Widget : Form
     protected override void WndProc(ref Message m)
     {
         // Desktop mode: keep the widget under every other window.
-        if (m.Msg == 0x46 /* WM_WINDOWPOSCHANGING */ && !TopMost)
+        if (m.Msg == 0x46 /* WM_WINDOWPOSCHANGING */ && !pinned)
         {
             var wp = (Native.WINDOWPOS)Marshal.PtrToStructure(m.LParam, typeof(Native.WINDOWPOS));
             wp.hwndInsertAfter = new IntPtr(1); // HWND_BOTTOM
@@ -176,6 +209,8 @@ abstract class Widget : Form
         bool hot = (!Btn.IsEmpty && Btn.Contains(lp)) || !hz.IsEmpty;
         if (hot != BtnHot || hz != hotZone)
         {
+            if (hz == Pin) pinTip.Show(Pinned ? "Soltar (volver al escritorio)" : "Fijar encima de las ventanas", this, e.X, e.Y + (int)(20 * S));
+            else if (hotZone == Pin) pinTip.Hide(this);
             BtnHot = !hz.IsEmpty ? false : (!Btn.IsEmpty && Btn.Contains(lp));
             hotZone = hz;
             Cursor = hot ? Cursors.Hand : Cursors.Default;
@@ -186,6 +221,7 @@ abstract class Widget : Form
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
+        if (hotZone == Pin) pinTip.Hide(this);
         if (BtnHot || !hotZone.IsEmpty) { BtnHot = false; hotZone = RectangleF.Empty; Cursor = Cursors.Default; Invalidate(); }
     }
 
@@ -198,6 +234,18 @@ abstract class Widget : Form
         Btn = RectangleF.Empty;
         zones.Clear();
         Draw(g);
+        DrawPin(g);
+    }
+
+    // Outline pin when free, filled blue pin on a tinted tile when pinned.
+    void DrawPin(Graphics g)
+    {
+        zones.Add(new KeyValuePair<RectangleF, Action>(Pin, () => { Pinned = !Pinned; pinTip.Hide(this); }));
+        bool on = Pinned, hot = hotZone == Pin;
+        if (on || hot) Fill(g, Pin, 6, on ? Color.FromArgb(hot ? 70 : 40, Theme.Blue) : Theme.Hot);
+        using (var b = new SolidBrush(on ? Theme.Blue : hot ? Theme.Text : Theme.Dim))
+        using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            g.DrawString(on ? "" : "", fIcon, b, new RectangleF(Pin.X, Pin.Y + 1, Pin.Width, Pin.Height), sf);
     }
 
     // A small pill button with its own action (e.g. "Cerrar"). Registers a click zone.

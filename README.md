@@ -51,7 +51,8 @@ Smart App Control (Windows 11) bloquea los ejecutables sin firmar, **aunque los 
 ## Uso
 
 - Arrastra un widget para moverlo. La posición se guarda en `%APPDATA%\DeskWidgets\settings.ini`.
-- Clic derecho en un widget, o en el icono de la bandeja, para mostrar u ocultar cada widget, dejarlos siempre encima, iniciar con Windows o salir.
+- La chincheta de la esquina superior derecha fija ese widget por encima de cualquier ventana, para seguirlo mientras trabajas; otro clic lo devuelve al escritorio. Se recuerda por widget.
+- Clic derecho en un widget, o en el icono de la bandeja, para mostrar u ocultar cada widget, fijarlos todos encima, iniciar con Windows o salir.
 - **Cerrar apps pesadas** (widget de sistema): la sección «Apps que más consumen» lista las apps con ventana que más RAM/CPU gastan, con un botón **Cerrar** que pide confirmación y cierra todas sus instancias de tu sesión.
 - **Analizar con Claude** (widget de sistema o menú): envía a Claude el estado del PC, los procesos que más gastan y la red con los dispositivos de la LAN, y devuelve un diagnóstico con acciones (cerrar procesos, bloquear un dispositivo en el router). Usa tu suscripción vía Claude Code en modo headless (`claude -p`), sin API key.
 
