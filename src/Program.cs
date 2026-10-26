@@ -18,9 +18,11 @@ static class Program
     static void Main()
     {
         bool fresh;
+        using (var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, "DeskWidgets.Show"))
         using (new Mutex(true, "DeskWidgets.Singleton", out fresh))
         {
-            if (!fresh) return;
+            // Already running (e.g. opened from the shortcut): bring that instance's widgets back instead.
+            if (!fresh) { showSignal.Set(); return; }
             Native.SetProcessDPIAware();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -38,7 +40,9 @@ static class Program
             var menu = BuildMenu();
             net.ContextMenuStrip = pc.ContextMenuStrip = cl.ContextMenuStrip = menu;
             tray = new NotifyIcon { Icon = MakeIcon(), Text = AppName, ContextMenuStrip = menu, Visible = true };
-            tray.DoubleClick += (s, e) => { net.Show(); pc.Show(); cl.Show(); };
+            tray.DoubleClick += (s, e) => ShowAll();
+            var ui = SynchronizationContext.Current; // set by WinForms once the first control exists
+            ThreadPool.RegisterWaitForSingleObject(showSignal, (o, t) => ui.Post(_ => ShowAll(), null), null, -1, false);
             cl.Notify += (title, body) => tray.ShowBalloonTip(10000, title, body, ToolTipIcon.Warning);
 
             if (Settings.Bool("net.visible", true)) net.Show();
@@ -99,6 +103,19 @@ static class Program
         advisor.Run();
     }
 
+    static void ShowAll()
+    {
+        foreach (var w in new Form[] { net, pc, cl })
+        {
+            w.Show();
+            w.Activate();
+        }
+        Settings.SetBool("net.visible", true);
+        Settings.SetBool("pc.visible", true);
+        Settings.SetBool("claude.visible", true);
+        Settings.Save();
+    }
+
     static void Toggle(Form f, string id)
     {
         if (f.Visible) f.Hide(); else f.Show();
@@ -121,23 +138,44 @@ static class Program
         }
     }
 
-    // Tray icon drawn at runtime: three bars on a rounded tile.
+    // App icon drawn at runtime: three bars on a round tile, laid out on a 32-unit grid.
+    static Bitmap DrawIcon(int size)
+    {
+        var bmp = new Bitmap(size, size);
+        using (var g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.ScaleTransform(size / 32f, size / 32f);
+            using (var b = new SolidBrush(Theme.Bg)) g.FillEllipse(b, 0, 0, 31, 31);
+            using (var b = new SolidBrush(Theme.Blue))
+            {
+                g.FillRectangle(b, 8, 17, 4, 7);
+                g.FillRectangle(b, 14, 12, 4, 12);
+                g.FillRectangle(b, 20, 7, 4, 17);
+            }
+        }
+        return bmp;
+    }
+
     static Icon MakeIcon()
     {
-        using (var bmp = new Bitmap(32, 32))
+        using (var bmp = DrawIcon(32)) return Icon.FromHandle(bmp.GetHicon());
+    }
+
+    // Writes the icon as a 256px PNG-in-ICO for the shortcuts; called by install.ps1.
+    public static void SaveIcon(string path)
+    {
+        byte[] png;
+        using (var bmp = DrawIcon(256))
+        using (var ms = new System.IO.MemoryStream()) { bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png); png = ms.ToArray(); }
+        using (var w = new System.IO.BinaryWriter(System.IO.File.Create(path)))
         {
-            using (var g = Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                using (var b = new SolidBrush(Theme.Bg)) g.FillEllipse(b, 0, 0, 31, 31);
-                using (var b = new SolidBrush(Theme.Blue))
-                {
-                    g.FillRectangle(b, 8, 17, 4, 7);
-                    g.FillRectangle(b, 14, 12, 4, 12);
-                    g.FillRectangle(b, 20, 7, 4, 17);
-                }
-            }
-            return Icon.FromHandle(bmp.GetHicon());
+            w.Write((short)0); w.Write((short)1); w.Write((short)1);  // ICONDIR: reserved, type icon, one image
+            w.Write((byte)0); w.Write((byte)0);                         // 0 = 256 px wide and high
+            w.Write((byte)0); w.Write((byte)0);                         // no palette, reserved
+            w.Write((short)1); w.Write((short)32);                      // planes, bits per pixel
+            w.Write(png.Length); w.Write(6 + 16);                       // image size, offset after this entry
+            w.Write(png);
         }
     }
 }

@@ -5,7 +5,7 @@ param([switch]$Uninstall)
 $ErrorActionPreference = 'Stop'
 
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\DeskWidgets'
-$lnk = Join-Path ([Environment]::GetFolderPath('Programs')) 'DeskWidgets.lnk'
+$lnks = 'Programs', 'Desktop' | ForEach-Object { Join-Path ([Environment]::GetFolderPath($_)) 'DeskWidgets.lnk' }
 $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $psArgs = "-NoProfile -Sta -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\DeskWidgets.ps1`""
@@ -18,7 +18,7 @@ Start-Sleep -Milliseconds 500
 
 if ($Uninstall) {
     Remove-ItemProperty -Path $run -Name DeskWidgets -ErrorAction SilentlyContinue
-    Remove-Item $lnk, $dir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item ($lnks + $dir) -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host 'DeskWidgets desinstalado. Los ajustes siguen en %APPDATA%\DeskWidgets.'
     return
 }
@@ -29,14 +29,22 @@ if ($LASTEXITCODE -ne 0) { throw 'La compilación falló.' }
 New-Item -ItemType Directory -Force $dir | Out-Null
 Copy-Item (Join-Path $PSScriptRoot 'DeskWidgets.dll'), (Join-Path $PSScriptRoot 'DeskWidgets.ps1') $dir -Force
 
+# Shortcut icon, drawn by the app itself (loaded from bytes, like DeskWidgets.ps1 does).
+$asm = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes((Join-Path $dir 'DeskWidgets.dll')))
+$asm.GetType('Program').GetMethod('SaveIcon').Invoke($null, [object[]]@([string](Join-Path $dir 'DeskWidgets.ico')))
+
+# Start menu and desktop. Opening either while it runs brings hidden widgets back.
 $shell = New-Object -ComObject WScript.Shell
-$s = $shell.CreateShortcut($lnk)
-$s.TargetPath = $ps
-$s.Arguments = $psArgs
-$s.WorkingDirectory = $dir
-$s.WindowStyle = 7
-$s.Description = 'Widgets de red y rendimiento'
-$s.Save()
+foreach ($lnk in $lnks) {
+    $s = $shell.CreateShortcut($lnk)
+    $s.TargetPath = $ps
+    $s.Arguments = $psArgs
+    $s.WorkingDirectory = $dir
+    $s.WindowStyle = 7
+    $s.IconLocation = Join-Path $dir 'DeskWidgets.ico'
+    $s.Description = 'Widgets de red, rendimiento y Claude'
+    $s.Save()
+}
 
 Set-ItemProperty -Path $run -Name DeskWidgets -Value "`"$ps`" $psArgs"
 Start-Process $ps $psArgs -WindowStyle Hidden
