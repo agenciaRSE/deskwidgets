@@ -40,6 +40,7 @@ static class Program
             net.ContextMenuStrip = pc.ContextMenuStrip = cl.ContextMenuStrip = menu;
             tray = new NotifyIcon { Icon = MakeIcon(), Text = AppName, ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += (s, e) => { net.Show(); pc.Show(); cl.Show(); };
+            cl.Notify += (title, body) => tray.ShowBalloonTip(10000, title, body, ToolTipIcon.Warning);
 
             if (Settings.Bool("net.visible", true)) net.Show();
             if (Settings.Bool("pc.visible", true)) pc.Show();
