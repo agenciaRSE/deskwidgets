@@ -23,6 +23,19 @@ static class Program
         {
             // Already running (e.g. opened from the shortcut): bring that instance's widgets back instead.
             if (!fresh) { showSignal.Set(); return; }
+            // A failed paint or tick (e.g. while the GPU driver resets) is logged and the widgets keep running,
+            // instead of a dialog nobody sees. Background-thread crashes still end the process: log them first,
+            // DeskWidgets.ps1 then restarts it.
+            Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+            string lastUiError = null;
+            Application.ThreadException += (s, e) =>
+            {
+                // A paint that fails once fails every second: log each distinct error once.
+                var text = e.Exception.ToString();
+                if (text != lastUiError) Log("UI thread: " + text);
+                lastUiError = text;
+            };
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => Log("background thread, process ending: " + e.ExceptionObject);
             Native.SetProcessDPIAware();
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -123,6 +136,19 @@ static class Program
         Settings.Save();
     }
 
+    // Same file DeskWidgets.ps1 writes startup failures and restarts to.
+    static void Log(string text)
+    {
+        try
+        {
+            var dir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName);
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.AppendAllText(System.IO.Path.Combine(dir, "error.log"),
+                DateTime.Now.ToString("s") + " pid " + System.Diagnostics.Process.GetCurrentProcess().Id + " " + text + "\r\n\r\n");
+        }
+        catch { }
+    }
+
     static bool IsAutostart()
     {
         using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue(AppName) != null;
@@ -133,7 +159,10 @@ static class Program
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
         {
             // The full command line, not ExecutablePath: hosted by DeskWidgets.ps1 that would be bare powershell.exe.
-            if (on) k.SetValue(AppName, Environment.CommandLine);
+            // Minus -Child, so Windows starts the supervisor rather than an unwatched widget process, and inside a
+            // headless conhost like install.ps1 does, so no Windows Terminal tab hosts it.
+            if (on) k.SetValue(AppName, "\"" + System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "conhost.exe")
+                + "\" --headless " + Environment.CommandLine.Replace(" -Child", ""));
             else k.DeleteValue(AppName, false);
         }
     }
