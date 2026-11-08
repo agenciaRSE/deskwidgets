@@ -44,7 +44,7 @@ Instalar better-claude antes o después de los widgets da igual: el widget compr
 
 ## Instalación en otra máquina
 
-1. Clona el repo (o copia la carpeta):
+1. Descarga el `.zip` de la [última versión](https://github.com/agenciaRSE/deskwidgets/releases/latest) y descomprímelo, o clona el repo:
    ```powershell
    git clone https://github.com/agenciaRSE/deskwidgets.git
    cd deskwidgets
