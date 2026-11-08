@@ -12,9 +12,33 @@ Tres widgets de escritorio nativos para Windows 10/11 en un único proceso liger
 
 - **Windows 10 o 11** (incluye .NET Framework 4.8, así que `csc.exe` ya está presente — no hace falta instalar nada).
 - **PowerShell** (el de serie en Windows).
-- Opcionales, solo para funciones concretas del widget de Claude y del análisis:
-  - [Claude Code](https://claude.com/claude-code) instalado y con sesión iniciada (`claude`). Necesario para el **análisis con Claude** y para que el widget de Claude lea tu consumo (`~/.claude/projects`).
-  - El plugin **`sub-meter`** de [better-claude](https://github.com/midudev/better-claude) (midudev). Es lo que alimenta las barras de **5 h** y **semanal**. Sin él, esas barras muestran «sin datos»; el resto del widget funciona igual.
+
+Los widgets de **Conexión** y **Sistema** funcionan sin nada más. Lo relacionado con Claude depende de lo que tengas instalado:
+
+| Función | Qué necesita |
+|---|---|
+| Tokens y coste de hoy/semana/mes, gráfica de 14 días | [Claude Code](https://claude.com/claude-code) usado en esta máquina. El widget lee sus transcripts locales (`%USERPROFILE%\.claude\projects`); no necesita sesión abierta, API key ni plugins. |
+| Barras de límite de **5 h** y **semanal** | Claude Code con una **suscripción** (Pro/Max) y el plugin **`sub-meter`** de [better-claude](https://github.com/midudev/better-claude). Con API key no hay límites que mostrar. |
+| **Analizar con Claude** | Claude Code con sesión iniciada y el comando `claude` como `claude.exe` en el `PATH` (lo deja así el instalador nativo). |
+
+Sin esas piezas el widget no falla: muestra ceros o «sin datos» en lo que falte.
+
+### Configurar Claude Code (opcional)
+
+1. Instala Claude Code con el instalador nativo e inicia sesión:
+   ```powershell
+   irm https://claude.ai/install.ps1 | iex
+   claude
+   ```
+   Comprueba que `where.exe claude` devuelve un `claude.exe`. Si lo instalaste con `npm`, el comando es `claude.cmd` y el botón **Analizar con Claude** no lo encuentra; el resto del widget funciona igual.
+2. Para las barras de 5 h y semanal, dentro de Claude Code:
+   ```text
+   /plugin marketplace add midudev/better-claude
+   /plugin install sub-meter@better-claude
+   ```
+   Reinicia Claude Code y envía un mensaje. A partir de esa respuesta el plugin guarda la lectura en `%USERPROFILE%\.claude\plugins\store\sub-meter_*.json`, que es lo que lee el widget.
+
+Instalar better-claude antes o después de los widgets da igual: el widget comprueba el fichero en cada refresco.
 
 ## Instalación en otra máquina
 
