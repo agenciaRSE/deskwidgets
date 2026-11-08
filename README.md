@@ -2,6 +2,8 @@
 
 Tres widgets de escritorio nativos para Windows 10/11 en un único proceso ligero (~90 MB de RAM con PowerShell de anfitrión, <0,1 % de CPU). Sin dependencias ni instaladores: se compilan con el compilador de C# que ya trae .NET Framework 4.8.
 
+![Los tres widgets en el escritorio: Conexión, Sistema y Claude](docs/widgets.png)
+
 | Widget | Qué muestra |
 |---|---|
 | **Conexión** | SSID, estándar Wi-Fi, banda y canal, señal en % y dBm, velocidad de enlace, descarga/subida en vivo con gráfica de 60 s, latencia a 1.1.1.1, jitter, pérdida de paquetes, latencia al router, dispositivos en la red y test de velocidad bajo demanda (Cloudflare). |
@@ -117,6 +119,7 @@ src\ClaudeWidget.cs Widget de consumo de Claude
 src\Advisor.cs     Análisis con Claude (prompt, esquema JSON, cierre de procesos)
 src\Native.cs      P/Invoke (WlanAPI, PDH, ARP, memoria, DWM)
 src\Program.cs     Arranque, bandeja, menú, un único proceso
+docs\widgets.png   Captura del README
 ```
 
 ## Licencia
