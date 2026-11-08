@@ -118,3 +118,7 @@ src\Advisor.cs     Análisis con Claude (prompt, esquema JSON, cierre de proceso
 src\Native.cs      P/Invoke (WlanAPI, PDH, ARP, memoria, DWM)
 src\Program.cs     Arranque, bandeja, menú, un único proceso
 ```
+
+## Licencia
+
+[MIT](LICENSE). El plugin `sub-meter` es de [better-claude](https://github.com/midudev/better-claude) (MIT, midudev) y no se incluye aquí.
