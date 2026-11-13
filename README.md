@@ -105,6 +105,7 @@ El coste del widget de Claude es **equivalente a precios de la API** (entrada/sa
 - El escaneo de dispositivos solo cubre el /24 de tu IP; los que no responden a ARP no aparecen.
 - No hay ancho de banda por proceso (requiere ETW): «Apps que más consumen» ordena por RAM/CPU.
 - Las barras de 5 h y semanal solo se refrescan mientras Claude Code está en ejecución (es quien actualiza el fichero de `sub-meter`).
+- Si un cuelgue deja ese fichero lleno de bytes nulos, sub-meter ya no lo reescribe. El widget lo detecta, lo mueve a `%TEMP%\sub-meter_*.corrupt.json` y muestra «regenerando…» hasta que sub-meter crea uno nuevo (segundos, con Claude Code abierto).
 
 ## Estructura
 

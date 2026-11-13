@@ -143,11 +143,26 @@ sealed class ClaudeWidget : Widget
             var f = Directory.GetFiles(storeDir, "sub-meter_*.json").FirstOrDefault();
             if (f == null) return;
             string s = File.ReadAllText(f);
+            if (s.IndexOf('\0') >= 0) { SetAside(f); return; }
             ReadWindow(s, "five_hour", ref pct5h, ref reset5h);
             ReadWindow(s, "seven_day", ref pctWeek, ref resetWeek);
         }
         catch { }
     }
+
+    // A crash while Claude Code is saving its plugin store can leave the file full of NUL bytes (seen on
+    // 2026-11-11). sub-meter then fails to read it and never writes it again, so the bars stay empty for
+    // good. Moving the file out of the store lets the plugin recreate it on its next reading, seconds
+    // later in any open session. The copy goes to %TEMP% so the store holds only the plugins' own files.
+    void SetAside(string f)
+    {
+        string bak = Path.Combine(Path.GetTempPath(),
+            Path.GetFileNameWithoutExtension(f) + "." + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".corrupt.json");
+        File.Move(f, bak);
+        pct5h = pctWeek = Regenerating;
+    }
+
+    const double Regenerating = -2;   // shown as "regenerando…" until sub-meter writes a new file
 
     static void ReadWindow(string s, string kind, ref double pct, ref DateTime reset)
     {
@@ -365,7 +380,7 @@ sealed class ClaudeWidget : Widget
     void PlanBar(Graphics g, string label, double pct, double shown, DateTime reset, float x, float y, float w, float r)
     {
         T(g, label, fSmall, Theme.Dim, x, y);
-        if (pct < 0) { TR(g, "sin datos", fSmall, Theme.Dim, r, y); Bar(g, x, y + 17, w, 6, double.NaN, Theme.Track); return; }
+        if (pct < 0) { TR(g, pct == Regenerating ? "regenerando…" : "sin datos", fSmall, Theme.Dim, r, y); Bar(g, x, y + 17, w, 6, double.NaN, Theme.Track); return; }
         Color c = Theme.Load(pct / 100);
         TR(g, "reset " + Until(reset), fSmall, Theme.Dim, r, y);
         TR(g, Math.Max(0, shown).ToString("0") + " %", fSmall, c, r - 70, y);
