@@ -189,6 +189,14 @@ abstract class Widget : Form
 
     protected PointF Logical(Point p) { return new PointF(p.X / S, p.Y / S); }
 
+    // For widgets whose content grows and shrinks: resize to the drawn height after this paint.
+    protected void FitHeight(float logical)
+    {
+        int h = (int)Math.Round(logical * S);
+        if (Math.Abs(h - ClientSize.Height) > 1 && IsHandleCreated)
+            BeginInvoke((Action)(() => ClientSize = new Size(ClientSize.Width, h)));
+    }
+
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);

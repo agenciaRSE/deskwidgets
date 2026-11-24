@@ -46,7 +46,7 @@ foreach ($lnk in $lnks) {
     $s.WorkingDirectory = $dir
     $s.WindowStyle = 7
     $s.IconLocation = Join-Path $dir 'DeskWidgets.ico'
-    $s.Description = 'Widgets de red, rendimiento y Claude'
+    $s.Description = 'Widgets de red, rendimiento, memoria y Claude'
     $s.Save()
 }
 

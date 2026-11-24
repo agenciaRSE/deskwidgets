@@ -133,11 +133,14 @@ static class Procs
         "MpDefenderCoreService", "WmiPrvSE", "WUDFHost", "dasHost", "LsaIso", "DeskWidgets", "claude",
     };
 
+    // Cached: on .NET Framework, Process.ProcessName enumerates every process in the system on each call.
+    static readonly string SelfName = Process.GetCurrentProcess().ProcessName;
+
     public static bool CanClose(string name)
     {
         // Our own host too (powershell when launched via DeskWidgets.ps1): closing it would kill the widgets.
         return !string.IsNullOrEmpty(name) && !Protected.Contains(name)
-            && !name.Equals(Process.GetCurrentProcess().ProcessName, StringComparison.OrdinalIgnoreCase);
+            && !name.Equals(SelfName, StringComparison.OrdinalIgnoreCase);
     }
 
     // CPU (sampled over 1.5 s) and RAM per process name, top 25, for the model to reason about.

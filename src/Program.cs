@@ -12,6 +12,7 @@ static class Program
     static NetWidget net;
     static PcWidget pc;
     static ClaudeWidget cl;
+    static MemWidget mem;
     static NotifyIcon tray;
 
     [STAThread]
@@ -44,14 +45,16 @@ static class Program
             net = new NetWidget();
             pc = new PcWidget();
             cl = new ClaudeWidget();
+            mem = new MemWidget();
             var wa = Screen.PrimaryScreen.WorkingArea;
             net.PlaceDefault(wa.Right - net.Width - 16, wa.Top + 16);
             pc.PlaceDefault(wa.Right - pc.Width - 16, wa.Top + 16 + net.Height + 12);
             cl.PlaceDefault(wa.Right - cl.Width - 16, wa.Top + 16 + net.Height + 12 + pc.Height + 12);
+            mem.PlaceDefault(wa.Right - net.Width - 16 - mem.Width - 12, wa.Top + 16);
 
             pc.Analyze += (s, e) => ShowAdvisor();
             var menu = BuildMenu();
-            net.ContextMenuStrip = pc.ContextMenuStrip = cl.ContextMenuStrip = menu;
+            net.ContextMenuStrip = pc.ContextMenuStrip = cl.ContextMenuStrip = mem.ContextMenuStrip = menu;
             tray = new NotifyIcon { Icon = MakeIcon(), Text = AppName, ContextMenuStrip = menu, Visible = true };
             tray.DoubleClick += (s, e) => ShowAll();
             var ui = SynchronizationContext.Current; // set by WinForms once the first control exists
@@ -61,6 +64,7 @@ static class Program
             if (Settings.Bool("net.visible", true)) net.Show();
             if (Settings.Bool("pc.visible", true)) pc.Show();
             if (Settings.Bool("claude.visible", true)) cl.Show();
+            if (Settings.Bool("mem.visible", true)) mem.Show();
             Application.Run();
         }
     }
@@ -71,6 +75,7 @@ static class Program
         var iNet = new ToolStripMenuItem("Widget de red");
         var iPc = new ToolStripMenuItem("Widget de rendimiento");
         var iCl = new ToolStripMenuItem("Widget de Claude");
+        var iMem = new ToolStripMenuItem("Widget de memoria");
         var iTop = new ToolStripMenuItem("Fijar todos encima de las ventanas");
         var iRun = new ToolStripMenuItem("Iniciar con Windows");
         var iExit = new ToolStripMenuItem("Salir");
@@ -79,20 +84,22 @@ static class Program
         iNet.Click += (s, e) => Toggle(net, "net");
         iPc.Click += (s, e) => Toggle(pc, "pc");
         iCl.Click += (s, e) => Toggle(cl, "claude");
+        iMem.Click += (s, e) => Toggle(mem, "mem");
         iTop.Click += (s, e) =>
         {
-            bool v = !(net.Pinned && pc.Pinned && cl.Pinned);
-            net.Pinned = pc.Pinned = cl.Pinned = v;
+            bool v = !(net.Pinned && pc.Pinned && cl.Pinned && mem.Pinned);
+            net.Pinned = pc.Pinned = cl.Pinned = mem.Pinned = v;
         };
         iRun.Click += (s, e) => SetAutostart(!IsAutostart());
-        iExit.Click += (s, e) => { tray.Visible = false; Settings.Save(); Application.Exit(); };
-        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, iCl, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
+        iExit.Click += (s, e) => { mem.OnExit(); tray.Visible = false; Settings.Save(); Application.Exit(); };
+        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, iCl, iMem, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
         m.Opening += (s, e) =>
         {
             iNet.Checked = net.Visible;
             iPc.Checked = pc.Visible;
             iCl.Checked = cl.Visible;
-            iTop.Checked = net.Pinned && pc.Pinned && cl.Pinned;
+            iMem.Checked = mem.Visible;
+            iTop.Checked = net.Pinned && pc.Pinned && cl.Pinned && mem.Pinned;
             iRun.Checked = IsAutostart();
         };
         return m;
@@ -118,7 +125,7 @@ static class Program
 
     static void ShowAll()
     {
-        foreach (var w in new Form[] { net, pc, cl })
+        foreach (var w in new Form[] { net, pc, cl, mem })
         {
             w.Show();
             w.Activate();
@@ -126,6 +133,7 @@ static class Program
         Settings.SetBool("net.visible", true);
         Settings.SetBool("pc.visible", true);
         Settings.SetBool("claude.visible", true);
+        Settings.SetBool("mem.visible", true);
         Settings.Save();
     }
 
