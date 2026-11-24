@@ -289,13 +289,14 @@ sealed class FreePanel : Form
                 Execute = () => { KDrivePause.Start(exe, 60); return Close(g, true); },
             });
         }
-        if (ChromeExt.Installed && ChromeExt.Global && ChromeExt.Disabling == false && s.ChromeRunning && s.ChromeExtMem > 0)
+        var chromePids = MemWidget.ChromePids(s);
+        if (ChromeExt.Installed && ChromeExt.Shortcut != null && ChromeExt.Disabling == false && s.ChromeRunning && s.ChromeExtMem > 0)
             l.Add(new Suggestion
             {
                 Title = "Apagar las extensiones de Chrome",
                 Detail = ChromeExt.Enabled + " activas · vuelven a encenderse desde el widget",
                 Mem = s.ChromeExtMem,
-                Execute = () => { ChromeExt.Toggle(); Thread.Sleep(2500); return true; },
+                Execute = () => ChromeExt.Toggle(chromePids),
             });
         // Apps last, never preselected: they may hold unsaved work. Not the terminal running Claude sessions.
         foreach (var a in s.Apps.Where(a => a.CanClose && a.Mem >= 150L << 20).Take(6))

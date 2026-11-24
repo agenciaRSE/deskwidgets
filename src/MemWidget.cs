@@ -11,7 +11,7 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 // "Disable All Extensions" (Chrome Web Store) toggles every other extension when its toolbar action fires.
-// The widget presses the global shortcut the user gave that action in chrome://extensions/shortcuts.
+// The widget presses the shortcut the user gave that action in chrome://extensions/shortcuts.
 static class ChromeExt
 {
     public const string Id = "ailfldpmpboolaihojfagmmfbhcgohne";
@@ -23,7 +23,6 @@ static class ChromeExt
     public static bool Installed;
     public static int Enabled = -1;    // other extensions enabled in the Default profile
     public static string Shortcut;     // e.g. "Ctrl+Shift+8"
-    public static bool Global;
     public static bool? Disabling;     // true = the extension is keeping the others off
 
     public static void Refresh()
@@ -62,14 +61,13 @@ static class ChromeExt
                 prefStamp = st;
                 var d = Json.Deserialize<Dictionary<string, object>>(ReadShared(pp));
                 var cmds = Dig(d, "extensions", "commands") as Dictionary<string, object>;
-                Shortcut = null; Global = false;
+                Shortcut = null;
                 if (cmds != null)
                     foreach (var kv in cmds)
                     {
                         var c = kv.Value as Dictionary<string, object>;
                         if (c == null || !kv.Key.StartsWith("windows:") || !Id.Equals(c.ContainsKey("extension") ? c["extension"] : null)) continue;
                         Shortcut = kv.Key.Substring(8);
-                        Global = c.ContainsKey("global") && true.Equals(c["global"]);
                     }
             }
             Disabling = ReadState();
@@ -111,10 +109,50 @@ static class ChromeExt
     }
     static string ReadShared(string f) { return Encoding.UTF8.GetString(ReadBytes(f)); }
 
-    // Presses the shortcut (e.g. Ctrl+Shift+8). A global Chrome shortcut fires even when Chrome is in the background.
-    public static bool Toggle()
+    // Chrome does not allow a global scope for "Activate the extension" (_execute_action), so the shortcut only
+    // works in a focused Chrome window. Bring each window of your Chrome to the front in turn (most recent first),
+    // press the shortcut and stop when the extension's storage changes: a window of a profile without the
+    // extension does nothing. Then hand focus back. Runs off the UI thread; true = the state changed.
+    public static bool Toggle(ICollection<int> browserPids)
     {
-        if (string.IsNullOrEmpty(Shortcut)) return false;
+        var keys = Keys();
+        if (keys == null || browserPids == null || browserPids.Count == 0) return false;
+        var wins = new List<IntPtr>();
+        MemNative.EnumWindows((h, l) =>
+        {
+            int pid; MemNative.GetWindowThreadProcessId(h, out pid);
+            if (browserPids.Contains(pid) && MemNative.IsWindowVisible(h) && !MemNative.IsIconic(h) && MemNative.GetWindowTextLength(h) > 0)
+            {
+                var cls = new StringBuilder(64); MemNative.GetClassName(h, cls, 64);
+                if (cls.ToString() == "Chrome_WidgetWin_1") wins.Add(h);
+            }
+            return true;
+        }, IntPtr.Zero);
+        if (wins.Count == 0) return false;
+
+        var prev = MemNative.GetForegroundWindow();
+        bool changed = false;
+        try
+        {
+            foreach (var w in wins.Take(4))
+            {
+                string before = Signature();
+                MemNative.SetForegroundWindow(w);
+                for (int i = 0; i < 10 && MemNative.GetForegroundWindow() != w; i++) Thread.Sleep(30);
+                if (MemNative.GetForegroundWindow() != w) continue;
+                Thread.Sleep(60);
+                Press(keys);
+                for (int i = 0; i < 15 && !changed; i++) { Thread.Sleep(100); changed = Signature() != before; }
+                if (changed) break;
+            }
+        }
+        finally { if (prev != IntPtr.Zero) MemNative.SetForegroundWindow(prev); }
+        return changed;
+    }
+
+    static List<byte> Keys()
+    {
+        if (string.IsNullOrEmpty(Shortcut)) return null;
         var keys = new List<byte>();
         foreach (var t in Shortcut.Split('+'))
         {
@@ -123,11 +161,26 @@ static class ChromeExt
             else if (k == "Shift") keys.Add(0x10);
             else if (k == "Alt") keys.Add(0x12);
             else if (k.Length == 1 && char.IsLetterOrDigit(k[0])) keys.Add((byte)char.ToUpperInvariant(k[0]));
-            else return false;
+            else return null;
         }
+        return keys;
+    }
+
+    static void Press(List<byte> keys)
+    {
         foreach (var k in keys) MemNative.keybd_event(k, 0, 0, UIntPtr.Zero);
         for (int i = keys.Count - 1; i >= 0; i--) MemNative.keybd_event(keys[i], 0, 2 /* KEYUP */, UIntPtr.Zero);
-        return true;
+    }
+
+    // Size + write time of the extension's storage files: changes as soon as the toggle saves its new state.
+    static string Signature()
+    {
+        try
+        {
+            var dir = Path.Combine(Profile, @"Sync Extension Settings\" + Id);
+            return string.Join("|", new DirectoryInfo(dir).GetFiles().Select(f => f.Name + ":" + f.Length + ":" + f.LastWriteTimeUtc.Ticks));
+        }
+        catch { return ""; }
     }
 }
 
@@ -344,7 +397,7 @@ sealed class MemWidget : Widget
             var pr = new RectangleF(R - 72, y - 1, 72, 20);
             if (DateTime.Now < extBusyUntil) TR(g, "cambiando…", fSmall, Theme.Dim, R, y + 2);
             else if (!s.ChromeRunning) TR(g, "Chrome cerrado", fSmall, Theme.Dim, R, y + 2);
-            else if (ChromeExt.Shortcut == null || !ChromeExt.Global) ActionPill(g, pr, "Configurar", Theme.Amber, ShowExtSetup);
+            else if (ChromeExt.Shortcut == null) ActionPill(g, pr, "Configurar", Theme.Amber, ShowExtSetup);
             else if (ChromeExt.Disabling == true) ActionPill(g, pr, "Encender", Theme.Green, ToggleExt);
             else if (ChromeExt.Disabling == false) ActionPill(g, pr, "Apagar", Theme.Amber, ToggleExt);
             else ActionPill(g, pr, "Alternar", Theme.Blue, ToggleExt);
@@ -444,23 +497,39 @@ sealed class MemWidget : Widget
         Run(kd, true);
     }
 
+    // Chrome's own windows belong to its browser process: the root of each "Chrome" group.
+    public static List<int> ChromePids(MemSnapshot s)
+    {
+        return s.Apps.Where(g => g.Key.StartsWith("app:chrome:") && g.Procs.Count > 0).Select(g => g.Procs[0].Pid).ToList();
+    }
+
     void ToggleExt()
     {
-        extBusyUntil = DateTime.Now.AddSeconds(4);
-        ChromeExt.Toggle();
-        ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(1500); ChromeExt.Refresh(); BeginInvoke((Action)Invalidate); });
+        extBusyUntil = DateTime.Now.AddSeconds(30);
+        List<int> pids; lock (snapLock) pids = ChromePids(snap);
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            bool ok = ChromeExt.Toggle(pids);
+            Thread.Sleep(800);
+            ChromeExt.Refresh();
+            BeginInvoke((Action)(() =>
+            {
+                extBusyUntil = DateTime.MinValue;
+                if (!ok) { flash = "✕ Chrome no respondió al atajo"; flashUntil = DateTime.Now.AddSeconds(10); }
+                Invalidate();
+            }));
+        });
     }
 
     void ShowExtSetup()
     {
         try { Clipboard.SetText(ChromeExt.ShortcutsUrl); } catch { }
         MessageBox.Show(this,
-            "Para encender y apagar las extensiones desde aquí, dale un atajo global a «Disable All Extensions»:\n\n" +
+            "Para encender y apagar las extensiones desde aquí, dale un atajo a «Disable All Extensions»:\n\n" +
             "1. En Chrome, pega en la barra de direcciones: " + ChromeExt.ShortcutsUrl + " (ya está copiado).\n" +
-            "2. En «Disable All Extensions» › «Activar la extensión», pulsa Ctrl+Shift+8.\n" +
-            "3. Cambia «En Chrome» por «Global».\n\n" +
-            (ChromeExt.Shortcut != null && !ChromeExt.Global ? "Ahora tiene " + ChromeExt.Shortcut + " pero solo «En Chrome»: falta el paso 3.\n\n" : "") +
-            "El widget lo detecta solo en unos segundos.",
+            "2. En «Disable All Extensions» › «Activar la extensión», pulsa Ctrl+Shift+8. El ámbito «En Chrome» vale.\n\n" +
+            "Al pulsar el botón, el widget trae Chrome al frente un momento, pulsa el atajo y te devuelve a la app en la que estabas. " +
+            "El widget detecta el atajo solo en unos segundos.",
             "Extensiones de Chrome", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
