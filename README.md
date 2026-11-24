@@ -2,7 +2,7 @@
 
 Cuatro widgets de escritorio nativos para Windows 10/11 en un único proceso ligero (~90 MB de RAM con PowerShell de anfitrión, <0,1 % de CPU). Sin dependencias ni instaladores: se compilan con el compilador de C# que ya trae .NET Framework 4.8.
 
-![Los tres widgets en el escritorio: Conexión, Sistema y Claude](docs/widgets.png)
+![Los cuatro widgets en el escritorio: Conexión, Sistema, Claude y Memoria (este último con datos de ejemplo)](docs/widgets.png)
 
 | Widget | Qué muestra |
 |---|---|
