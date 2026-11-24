@@ -171,20 +171,21 @@ sealed class MemWidget : Widget
                     if (s.KDrive != null) keys.Add(s.KDrive.Key);
                     busy.RemoveWhere(k => !keys.Contains(k));
                 }
+                BeginInvoke((Action)(() => CheckAlert(s)));
             }
             catch { }
             finally { scanning = false; }
         });
     }
 
-    static string Fmt(long bytes)
+    public static string Fmt(long bytes)
     {
         double mb = bytes / 1048576.0;
         return mb >= 1000 ? (mb / 1024).ToString("0.0") + " GB" : mb.ToString("0") + " MB";
     }
     static string Gb(ulong bytes) { return (bytes / 1073741824.0).ToString("0.0"); }
 
-    static string Ago(DateTime since)
+    public static string Ago(DateTime since)
     {
         if (since == DateTime.MinValue) return "inactiva";
         var t = DateTime.Now - since;
@@ -202,7 +203,7 @@ sealed class MemWidget : Widget
             case "busy": return "trabajando";
             case "shell": return "ejecutando un comando";
             case "waiting": return "esperando tu respuesta";
-            case "unknown": return "estado desconocido";
+            case "unknown": return "sin datos de sesión";
             default: return st;
         }
     }
@@ -350,7 +351,16 @@ sealed class MemWidget : Widget
             y += 26;
         }
 
-        FitHeight(y + 8);
+        y += 4;
+        // Primary action: highlighted in blue once memory is tight.
+        var br = new RectangleF(X, y, W, 32);
+        Fill(g, br, 7, frac >= AlertAt ? (BtnHot ? Color.FromArgb(90, Theme.Blue) : Color.FromArgb(60, Theme.Blue)) : (BtnHot ? Theme.Hot : Theme.Track));
+        Btn = br;
+        string bl = "Liberar memoria…";
+        T(g, bl, fText, frac >= AlertAt ? Theme.Blue : Theme.Text, br.X + (br.Width - TW(g, bl, fText)) / 2, br.Y + 8);
+        y += 32;
+
+        FitHeight(y + 14);
     }
 
     // ---- actions ----
@@ -389,13 +399,17 @@ sealed class MemWidget : Widget
 
     void AskCloseSession(Group grp)
     {
-        string resume = grp.SessionId == null ? null
-            : (grp.Cwd != null ? "cd \"" + grp.Cwd + "\"; " : "") + "claude --resume " + grp.SessionId;
+        string resume = ResumeCommand(grp);
         string text = "¿Cerrar la sesión de Claude Code «" + grp.Title + "»?\n\nLibera ≈ " + Fmt(grp.Mem) + " (Claude y sus " + (grp.Procs.Count - 1) + " procesos: MCP, shells…).";
         if (resume != null) text += "\n\nLa conversación queda guardada. Al cerrar se copia al portapapeles el comando para seguirla:\n" + resume;
         if (!Confirm(text, "Cerrar sesión de Claude Code")) return;
         if (resume != null) try { Clipboard.SetText(resume); } catch { }
         Run(grp, false);
+    }
+
+    public static string ResumeCommand(Group grp)
+    {
+        return grp.SessionId == null ? null : (grp.Cwd != null ? "cd \"" + grp.Cwd + "\"; " : "") + "claude --resume " + grp.SessionId;
     }
 
     void AskCloseBrowser(Group grp)
@@ -451,6 +465,48 @@ sealed class MemWidget : Widget
     }
 
     public void OnExit() { KDrivePause.ResumeIfPaused(); }
+
+    // ---- "Liberar memoria" panel ----
+
+    FreePanel panel;
+    protected override void OnButton() { ShowFreePanel(); }
+
+    public void ShowFreePanel()
+    {
+        if (panel == null || panel.IsDisposed)
+            panel = new FreePanel(() => { flash = "✓ memoria liberada"; flashUntil = DateTime.Now.AddSeconds(10); Scan(); Invalidate(); });
+        panel.Show();
+        if (panel.WindowState == FormWindowState.Minimized) panel.WindowState = FormWindowState.Normal;
+        panel.Activate();
+        panel.Reload();
+    }
+
+    // ---- alert when memory stays high ----
+
+    const double AlertAt = 0.85, RearmBelow = 0.80;
+    int highScans;
+    bool armed = true;
+    DateTime lastAlert = DateTime.MinValue;
+    public event Action<string, string> Alert;
+    public static bool AlertsOn { get { return Settings.Bool("mem.alert", true); } set { Settings.SetBool("mem.alert", value); Settings.Save(); } }
+
+    // Called after each scan (every 3 s): 10 scans in a row at 85 % or more = 30 s of real pressure, not a spike.
+    void CheckAlert(MemSnapshot s)
+    {
+        if (s.RamTotal == 0) return;
+        double frac = (double)s.RamUsed / s.RamTotal;
+        if (frac < RearmBelow) { armed = true; highScans = 0; return; }
+        highScans = frac >= AlertAt ? highScans + 1 : 0;
+        if (!armed || highScans < 10 || !AlertsOn || (DateTime.Now - lastAlert).TotalMinutes < 20) return;
+        armed = false;
+        lastAlert = DateTime.Now;
+        var top = s.Apps.Where(g => g.CanClose).Take(2).Select(g => g.Title + " " + Fmt(g.Mem));
+        long safe = (s.Orphans != null ? s.Orphans.Mem : 0) + s.Browsers.Sum(g => g.Mem)
+            + s.Sessions.Where(g => g.CanClose && g.StatusSince != DateTime.MinValue && (DateTime.Now - g.StatusSince).TotalMinutes >= 30).Sum(g => g.Mem);
+        string body = "Lo que más ocupa: " + string.Join(", ", top) + "."
+            + (safe > 0 ? " Puedes liberar ≈ " + Fmt(safe) + " sin riesgo." : "") + " Pulsa aquí para liberar memoria.";
+        if (Alert != null) Alert("Memoria al " + (frac * 100).ToString("0") + " %", body);
+    }
 }
 
 // kDrive "pause": closed now, reopened at a time saved in settings.ini, so it also survives a widget restart.

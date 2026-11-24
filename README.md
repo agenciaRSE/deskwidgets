@@ -90,6 +90,11 @@ Smart App Control (Windows 11) bloquea los ejecutables sin firmar, **aunque los 
   - **Cerrar una app** pide a sus ventanas que se cierren (Chrome guarda las pestañas) y termina lo que quede. Si es el terminal donde corren sesiones de Claude Code, el aviso lo dice.
   - **Pausar kDrive** lo cierra (libera su RAM) y lo vuelve a abrir solo a la hora indicada. La hora se guarda en `settings.ini`: si los widgets se reinician, la pausa sigue; si los cierras con «Salir», kDrive se reabre antes. Si lo abres tú antes, la pausa se olvida.
   - **Extensiones**: muestra cuántas extensiones hay activas en el perfil principal y cuánta RAM gastan sus procesos. La primera vez sale «Configurar»: en `chrome://extensions/shortcuts`, en «Disable All Extensions» › «Activar la extensión», pon `Ctrl+Shift+8` y cambia «En Chrome» por **«Global»**. Después el botón pulsa ese atajo y la extensión apaga todas las que no estén en su lista blanca, o vuelve a encenderlas.
+- **Liberar memoria…** (botón del widget de memoria o menú de la bandeja): panel con un escaneo nuevo en dos bloques.
+  - **Recomendado · sin riesgo**, ya marcado: MCP huérfanos, navegadores de pruebas y sesiones de Claude Code inactivas desde hace 30 min o más.
+  - **Más opciones**, sin marcar, de menos a más intrusivo: sesiones recientes, pausar kDrive 1 h, apagar las extensiones de Chrome y cerrar apps. No ofrece el terminal donde corren sesiones de Claude Code.
+  - El botón muestra lo que vas a liberar. Al terminar enseña la RAM antes y después, copia los comandos para reanudar las sesiones cerradas y dice a qué hora vuelve kDrive.
+- **Aviso de memoria**: si la RAM se queda al 85 % o más durante 30 s, sale un globo en la bandeja con lo que más ocupa y lo que se puede liberar sin riesgo. Al pulsarlo se abre el panel. No se repite hasta que la RAM baje del 80 %, y como mucho uno cada 20 min. Se desactiva en el menú: «Avisar si la memoria pasa del 85 %».
 - **Analizar con Claude** (widget de sistema o menú): envía a Claude el estado del PC, los procesos que más gastan y la red con los dispositivos de la LAN, y devuelve un diagnóstico con acciones (cerrar procesos, bloquear un dispositivo en el router). Usa tu suscripción vía Claude Code en modo headless (`claude -p`), sin API key.
 
 ## Cómo funciona
@@ -135,6 +140,7 @@ src\PcWidget.cs    Widget de sistema (+ cerrar apps, + botón de análisis)
 src\ClaudeWidget.cs Widget de consumo de Claude
 src\MemWidget.cs   Widget de memoria (+ pausa de kDrive, + extensiones de Chrome)
 src\MemScan.cs     Lista de procesos, agrupación por app/sesión y cierre de grupos
+src\FreePanel.cs   Panel «Liberar memoria» (sugerencias, progreso, resultado)
 src\Advisor.cs     Análisis con Claude (prompt, esquema JSON, cierre de procesos)
 src\Native.cs      P/Invoke (WlanAPI, PDH, ARP, memoria, DWM)
 src\Program.cs     Arranque, bandeja, menú, un único proceso

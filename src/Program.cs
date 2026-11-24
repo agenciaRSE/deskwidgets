@@ -14,6 +14,7 @@ static class Program
     static ClaudeWidget cl;
     static MemWidget mem;
     static NotifyIcon tray;
+    static bool memBalloon;
 
     [STAThread]
     static void Main()
@@ -59,7 +60,10 @@ static class Program
             tray.DoubleClick += (s, e) => ShowAll();
             var ui = SynchronizationContext.Current; // set by WinForms once the first control exists
             ThreadPool.RegisterWaitForSingleObject(showSignal, (o, t) => ui.Post(_ => ShowAll(), null), null, -1, false);
-            cl.Notify += (title, body) => tray.ShowBalloonTip(10000, title, body, ToolTipIcon.Warning);
+            cl.Notify += (title, body) => { memBalloon = false; tray.ShowBalloonTip(10000, title, body, ToolTipIcon.Warning); };
+            // High-memory alert: clicking the balloon opens the "Liberar memoria" panel.
+            mem.Alert += (title, body) => { memBalloon = true; tray.ShowBalloonTip(15000, title, body, ToolTipIcon.Warning); };
+            tray.BalloonTipClicked += (s, e) => { if (memBalloon) mem.ShowFreePanel(); };
 
             if (Settings.Bool("net.visible", true)) net.Show();
             if (Settings.Bool("pc.visible", true)) pc.Show();
@@ -81,6 +85,10 @@ static class Program
         var iExit = new ToolStripMenuItem("Salir");
         var iAi = new ToolStripMenuItem("Analizar con Claude…") { Font = new Font(m.Font, FontStyle.Bold) };
         iAi.Click += (s, e) => ShowAdvisor();
+        var iFree = new ToolStripMenuItem("Liberar memoria…") { Font = new Font(m.Font, FontStyle.Bold) };
+        iFree.Click += (s, e) => mem.ShowFreePanel();
+        var iAlert = new ToolStripMenuItem("Avisar si la memoria pasa del 85 %");
+        iAlert.Click += (s, e) => MemWidget.AlertsOn = !MemWidget.AlertsOn;
         iNet.Click += (s, e) => Toggle(net, "net");
         iPc.Click += (s, e) => Toggle(pc, "pc");
         iCl.Click += (s, e) => Toggle(cl, "claude");
@@ -92,7 +100,7 @@ static class Program
         };
         iRun.Click += (s, e) => SetAutostart(!IsAutostart());
         iExit.Click += (s, e) => { mem.OnExit(); tray.Visible = false; Settings.Save(); Application.Exit(); };
-        m.Items.AddRange(new ToolStripItem[] { iAi, new ToolStripSeparator(), iNet, iPc, iCl, iMem, new ToolStripSeparator(), iTop, iRun, new ToolStripSeparator(), iExit });
+        m.Items.AddRange(new ToolStripItem[] { iAi, iFree, new ToolStripSeparator(), iNet, iPc, iCl, iMem, new ToolStripSeparator(), iTop, iRun, iAlert, new ToolStripSeparator(), iExit });
         m.Opening += (s, e) =>
         {
             iNet.Checked = net.Visible;
@@ -101,6 +109,7 @@ static class Program
             iMem.Checked = mem.Visible;
             iTop.Checked = net.Pinned && pc.Pinned && cl.Pinned && mem.Pinned;
             iRun.Checked = IsAutostart();
+            iAlert.Checked = MemWidget.AlertsOn;
         };
         return m;
     }
