@@ -307,9 +307,20 @@ sealed class MemWidget : Widget
         foreach (var a in s.Apps.Take(5))
         {
             var grp = a;
-            if (grp.CanClose) Row(g, y, grp, grp.Detail, "Cerrar", Theme.Dim, () => AskCloseApp(grp));
-            else Row(g, y, grp, grp.Detail, null, Theme.Dim, null);
+            bool chrome = grp.Key.StartsWith("app:chrome:");
+            bool open = chrome && grp.Key == tabsKey;
+            string detail = chrome ? grp.Detail + (open ? " ▾" : " ▸") : grp.Detail;
+            if (chrome)
+            {
+                // The name and detail expand the list of its processes, with the tabs each one runs.
+                var zr = new RectangleF(X - 6, y - 3, R - 130 - X + 6, 22);
+                if (IsHot(zr) || open) Fill(g, zr, 5, open ? Theme.Track : Theme.Hot);
+                Zone(zr, () => ToggleTabs(grp));
+            }
+            if (grp.CanClose) Row(g, y, grp, detail, "Cerrar", Theme.Dim, () => AskCloseApp(grp));
+            else Row(g, y, grp, detail, null, Theme.Dim, null);
             y += 24;
+            if (open) y = DrawTabs(g, y, grp);
         }
 
         // Claude Code sessions: the main thing to close when memory runs short.
@@ -414,6 +425,114 @@ sealed class MemWidget : Widget
         y += 32;
 
         FitHeight(y + 14);
+    }
+
+    // ---- Chrome: one row per process, named after its tabs (read from Chrome's task manager) ----
+
+    const int TabRows = 8;
+    const float TabH = 22;
+    string tabsKey;                 // Chrome group whose list is open
+    List<ChromeTask> tabs;          // null = not read (see tabsError)
+    string tabsError;
+    bool tabsLoading;
+    int tabScroll;
+    RectangleF tabArea;
+
+    void ToggleTabs(Group grp)
+    {
+        if (tabsKey == grp.Key) { tabsKey = null; return; }
+        tabsKey = grp.Key; tabScroll = 0; tabs = null; tabsError = null;
+        LoadTabs(grp);
+    }
+
+    void LoadTabs(Group grp)
+    {
+        if (tabsLoading || grp.Procs.Count == 0) return;
+        tabsLoading = true;
+        var browser = new[] { grp.Procs[0].Pid };
+        var pids = new HashSet<int>(grp.Procs.Select(p => p.Pid));
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            string err; List<ChromeTask> list = null;
+            try { list = ChromeTabs.Read(browser, pids, out err); } catch (Exception e) { err = e.Message; }
+            BeginInvoke((Action)(() => { tabs = list; tabsError = err; tabsLoading = false; Invalidate(); }));
+        });
+    }
+
+    float DrawTabs(Graphics g, float y, Group grp)
+    {
+        float x = X + 10;
+        tabArea = RectangleF.Empty;
+        if (tabsLoading) { T(g, "Leyendo el administrador de tareas de Chrome…", fSmall, Theme.Dim, x, y); return y + 22; }
+        if (tabs == null)
+        {
+            T(g, Fit(g, tabsError ?? "sin datos", fSmall, R - 80 - x), fSmall, Theme.Amber, x, y + 2);
+            ActionPill(g, new RectangleF(R - 72, y - 1, 72, 20), "Reintentar", Theme.Blue, () => LoadTabs(grp));
+            return y + 26;
+        }
+        // Live sizes from our own scan; processes that ended since the read drop out.
+        var byPid = grp.Procs.ToDictionary(p => p.Pid);
+        var rows = tabs.Where(t => byPid.ContainsKey(t.Pid)).OrderByDescending(t => byPid[t.Pid].Mem).ToList();
+        long rest = grp.Mem - rows.Sum(t => byPid[t.Pid].Mem);
+
+        Eyebrow(g, rows.Count + " PROCESOS CON PESTAÑAS", x, y + 2);
+        ActionPill(g, new RectangleF(R - 72, y - 1, 72, 20), "Actualizar", Theme.Blue, () => LoadTabs(grp));
+        y += 24;
+
+        tabScroll = Math.Max(0, Math.Min(tabScroll, rows.Count - TabRows));
+        int shown = Math.Min(TabRows, rows.Count);
+        tabArea = new RectangleF(X, y - 2, W + 12, shown * TabH);
+        for (int i = 0; i < shown; i++)
+        {
+            var t = rows[tabScroll + i];
+            var p = byPid[t.Pid];
+            float ry = y + i * TabH;
+            string size = Fmt(p.Mem), more = t.More > 0 ? "+" + t.More : null;
+            float sizeRight = R - 66;
+            float max = sizeRight - TW(g, size, fSmall) - 10 - x - (more != null ? TW(g, more, fSmall) + 6 : 0);
+            string label = Fit(g, t.Label, fSmall, max);
+            T(g, label, fSmall, Theme.Text, x, ry + 2);
+            if (more != null) T(g, more, fSmall, Theme.Dim, x + TW(g, label, fSmall) + 6, ry + 2);
+            TR(g, size, fSmall, Theme.Dim, sizeRight, ry + 2);
+            var tt = t; var pp = p;
+            ActionPill(g, new RectangleF(R - 58, ry, 58, 18), "Cerrar", Theme.Dim, () => AskCloseTab(tt, pp));
+        }
+        // Thin scrollbar when the list is longer than the box (mouse wheel scrolls it).
+        if (rows.Count > TabRows)
+        {
+            float h = shown * TabH, th = Math.Max(16, h * TabRows / rows.Count);
+            float ty = y + (h - th) * tabScroll / (rows.Count - TabRows);
+            Fill(g, new RectangleF(R + 6, y, 3, h), 1.5f, Theme.Track);
+            Fill(g, new RectangleF(R + 6, ty, 3, th), 1.5f, Theme.Dim);
+        }
+        y += shown * TabH + 2;
+        if (rest > 0) { T(g, "resto: navegador, GPU, red… " + Fmt(rest), fSmall, Theme.Dim, x, y); y += 18; }
+        return y + 6;
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        if (!tabArea.Contains(Logical(e.Location))) return;
+        tabScroll -= Math.Sign(e.Delta) * 2;   // clamped on the next paint
+        if (tabScroll < 0) tabScroll = 0;
+        Invalidate();
+    }
+
+    void AskCloseTab(ChromeTask t, Proc p)
+    {
+        var what = t.Tasks.Take(8).Select(x => "· " + ChromeTabs.Pretty(x));
+        string text = "¿Cerrar el proceso de Chrome de «" + t.Label + "»?\n\n" + string.Join("\n", what) + (t.Tasks.Count > 8 ? "\n· …" : "") +
+            "\n\nLibera ≈ " + Fmt(p.Mem) + ". Es lo mismo que «Finalizar proceso» en el administrador de tareas de Chrome: " +
+            "esas pestañas se quedan abiertas con el aviso «¡Vaya!» y vuelven a cargarse al recargarlas.";
+        if (!Confirm(text, "Cerrar pestañas de Chrome")) return;
+        long mem = p.Mem;
+        tabs.Remove(t);
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try { MemScan.Kill(p); } catch { }
+            BeginInvoke((Action)(() => { flash = "✓ liberados ≈ " + Fmt(mem); flashUntil = DateTime.Now.AddSeconds(10); Scan(); Invalidate(); }));
+        });
     }
 
     // ---- actions ----

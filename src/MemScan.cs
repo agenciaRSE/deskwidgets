@@ -457,7 +457,7 @@ static class MemScan
     }
 
     // Terminates only if the PID still belongs to the same process (creation time matches).
-    static void Kill(Proc p)
+    public static void Kill(Proc p)
     {
         if (p.Pid == Self || p.Pid <= 4) return;
         IntPtr h = MemNative.OpenProcess(MemNative.Terminate | MemNative.QueryLimited, false, p.Pid);

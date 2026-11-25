@@ -87,6 +87,7 @@ Smart App Control (Windows 11) bloquea los ejecutables sin firmar, **aunque los 
   - **Sesión de Claude Code**: cierra Claude y sus procesos (MCP, shells). Solo se puede si está inactiva; si está trabajando o esperando tu respuesta sale «en uso». Al cerrarla copia al portapapeles `cd "<proyecto>"; claude --resume <id>` para seguir la conversación. Las inactivas desde hace 30 min o más salen en ámbar.
   - **Navegador de pruebas**: el Chrome que abre `agent-browser`, con la web que tenía abierta.
   - **MCP huérfanos**: servidores MCP (`node`) cuyo proceso padre ya no existe. Los que tiene abiertos una app viva (Warp, VS Code, Raycast…) no salen aquí.
+  - **Pestañas de Chrome**: al pulsar en la fila de Chrome se despliega un proceso por fila, con la pestaña, app, marco o extensión que lleva dentro («+N» si comparte proceso con más), su memoria y un botón **Cerrar**. La lista se desplaza con la rueda del ratón. Windows no sabe qué pestaña va en cada proceso; Chrome sí, en su administrador de tareas (`Shift+Esc`): si no está abierto, el widget lo abre un momento, lo lee y lo vuelve a cerrar. «Actualizar» lo vuelve a leer. Cerrar equivale a «Finalizar proceso» de ese administrador: la pestaña sigue abierta con el aviso «¡Vaya!» y vuelve a cargarse al recargarla.
   - **Cerrar una app** pide a sus ventanas que se cierren (Chrome guarda las pestañas) y termina lo que quede. Si es el terminal donde corren sesiones de Claude Code, el aviso lo dice.
   - **Pausar kDrive** lo cierra (libera su RAM) y lo vuelve a abrir solo a la hora indicada. La hora se guarda en `settings.ini`: si los widgets se reinician, la pausa sigue; si los cierras con «Salir», kDrive se reabre antes. Si lo abres tú antes, la pausa se olvida.
   - **Extensiones**: muestra cuántas extensiones hay activas en el perfil principal y cuánta RAM gastan sus procesos. La primera vez sale «Configurar»: en `chrome://extensions/shortcuts`, en «Disable All Extensions» › «Activar la extensión», pon `Ctrl+Shift+8` (el ámbito «En Chrome» vale: Chrome no permite «Global» para esta acción). Después, el botón trae un momento al frente una ventana de tu Chrome y pulsa el atajo. Comprueba en el almacenamiento de la extensión que ha cambiado, y si no, prueba con otra ventana (por si era de un perfil sin la extensión). Luego te devuelve a la app en la que estabas. La extensión apaga todas las que no estén en su lista blanca, o vuelve a encenderlas.
@@ -112,6 +113,7 @@ Todo se lee con APIs nativas, sin lanzar `netsh`, `typeperf` ni WMI:
 | Límites 5 h / semanal | plugin `sub-meter` de better-claude (`~/.claude/plugins/store/sub-meter_*.json`: `percentUsed` + `resetsAt`) |
 | Procesos y memoria (widget de memoria) | `NtQuerySystemInformation(SystemProcessInformation)`: todos los procesos con padre, fecha de creación y **conjunto de trabajo privado** (la columna «Memoria» del Administrador de tareas) en una sola llamada. Cada 3 s, ~6 ms |
 | Línea de comandos | `NtQueryInformationProcess` (clase 60), solo de chrome, claude, node y kDrive, en caché por PID + fecha de creación |
+| Pestañas de cada proceso de Chrome | UI Automation sobre el administrador de tareas de Chrome (pestaña «Pestañas y extensiones»): cada fila da la tarea y el PID; las filas sin PID son del proceso de arriba |
 | Estado de las extensiones | `Secure Preferences` (activas), `Preferences` (atajo) y el log LevelDB de `chrome.storage.sync` de la extensión (`isDisablingOtherExts`) |
 
 El coste del widget de Claude es **equivalente a precios de la API** (entrada/salida/caché por familia de modelo), no lo que pagas con la suscripción; sirve para ver el valor real del uso.
@@ -123,7 +125,7 @@ El coste del widget de Claude es **equivalente a precios de la API** (entrada/sa
 - El escaneo de dispositivos solo cubre el /24 de tu IP; los que no responden a ARP no aparecen.
 - No hay ancho de banda por proceso (requiere ETW): «Apps que más consumen» ordena por RAM/CPU.
 - El widget de memoria no «limpia» la RAM vaciando working sets ni la lista standby: es cosmético (Windows la vuelve a llenar) y lo segundo exige administrador. Libera memoria cerrando cosas.
-- Chrome no deja ver la memoria de cada pestaña ni desactivar extensiones desde fuera: por eso se usa Disable All Extensions. Solo actúa sobre el perfil principal (`Default`).
+- Chrome no dice desde fuera qué pestaña va en cada proceso (la línea de comandos no lleva la URL, `chrome.processes` solo existe en Dev/Canary y el puerto de depuración está bloqueado en el perfil normal): se lee de su administrador de tareas, que necesita la columna «ID de proceso» (viene activada). Una actualización de Chrome que cambie esa ventana puede romper la lectura; entonces sale el motivo y «Reintentar». Tampoco deja desactivar extensiones desde fuera: por eso se usa Disable All Extensions. Solo actúa sobre el perfil principal (`Default`).
 - Cerrar un proceso lo mata; para cerrar una sesión de Claude Code eso no pierde nada (el historial ya está guardado), pero sí lo que una app no haya guardado si no responde al cierre normal.
 - Las barras de 5 h y semanal solo se refrescan mientras Claude Code está en ejecución (es quien actualiza el fichero de `sub-meter`).
 - Si un cuelgue deja ese fichero lleno de bytes nulos, sub-meter ya no lo reescribe. El widget lo detecta, lo mueve a `%TEMP%\sub-meter_*.corrupt.json` y muestra «regenerando…» hasta que sub-meter crea uno nuevo (segundos, con Claude Code abierto).
@@ -139,6 +141,7 @@ src\NetWidget.cs   Widget de conexión
 src\PcWidget.cs    Widget de sistema (+ cerrar apps, + botón de análisis)
 src\ClaudeWidget.cs Widget de consumo de Claude
 src\MemWidget.cs   Widget de memoria (+ pausa de kDrive, + extensiones de Chrome)
+src\ChromeTabs.cs  Lee el administrador de tareas de Chrome (pestañas de cada proceso)
 src\MemScan.cs     Lista de procesos, agrupación por app/sesión y cierre de grupos
 src\FreePanel.cs   Panel «Liberar memoria» (sugerencias, progreso, resultado)
 src\Advisor.cs     Análisis con Claude (prompt, esquema JSON, cierre de procesos)

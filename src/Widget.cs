@@ -256,6 +256,10 @@ abstract class Widget : Form
             g.DrawString(on ? "" : "", fIcon, b, new RectangleF(Pin.X, Pin.Y + 1, Pin.Width, Pin.Height), sf);
     }
 
+    // A clickable area with no drawing of its own (e.g. a row that expands).
+    protected void Zone(RectangleF r, Action onClick) { zones.Add(new KeyValuePair<RectangleF, Action>(r, onClick)); }
+    protected bool IsHot(RectangleF r) { return hotZone == r; }
+
     // A small pill button with its own action (e.g. "Cerrar"). Registers a click zone.
     protected void ActionPill(Graphics g, RectangleF r, string label, Color c, Action onClick)
     {
